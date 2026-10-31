@@ -22,26 +22,20 @@ jobs:
         run: |
           python3 -c '
           import glob, re
-
-          # 1. 自动调高工程的最低 iOS 版本限制，解决 @available 报错
           for p in glob.glob("**/*.pbxproj", recursive=True):
               txt = open(p, encoding="utf-8").read()
               txt = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;", "IPHONEOS_DEPLOYMENT_TARGET = 18.0;", txt)
               open(p, "w", encoding="utf-8").write(txt)
-              print("Patched deployment target in:", p)
-
-          # 2. 为 VideoCompositionService 自动补齐 @available 注解
           for p in glob.glob("**/VideoCompositionService.swift", recursive=True):
               txt = open(p, encoding="utf-8").read()
               if "@available" not in txt:
                   txt = txt.replace("actor VideoCompositionService", "@available(iOS 18.0, *)\nactor VideoCompositionService")
                   open(p, "w", encoding="utf-8").write(txt)
-                  print("Patched VideoCompositionService:", p)
           '
 
       - name: Build Xcode Project
         run: |
-          xcodebuild -project "AI Highlights.xcodeproj" -scheme "AI Highlights" -configuration Debug -sdk iphoneos -derivedDataPath build IPHONEOS_DEPLOYMENT_TARGET=18.0 DEVELOPMENT_TEAM="" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO PROVISIONING_PROFILE_SPECIFIER="" SWIFT_OPTIMIZATION_LEVEL="-Onone" OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -solver-expression-time-threshold=9999 -Xfrontend -solver-memory-threshold=999999999 -Xfrontend -typecheck-timeout-threshold=9999' build > build.log 2>&1 || (grep -n -C 5 "error:" build.log && exit 1)
+          xcodebuild -project "AI Highlights.xcodeproj" -scheme "AI Highlights" -configuration Debug -sdk iphoneos -derivedDataPath build IPHONEOS_DEPLOYMENT_TARGET=18.0 DEVELOPMENT_TEAM="" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO PROVISIONING_PROFILE_SPECIFIER="" SWIFT_OPTIMIZATION_LEVEL="-Onone" OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -solver-expression-time-threshold=9999' build > build.log 2>&1 || (grep -n -C 5 "error:" build.log && exit 1)
 
       - name: Verify and Package IPA
         run: |
