@@ -5,34 +5,31 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check Project Info
+        run: |
+          xcodebuild -project "AI Highlights.xcodeproj" -list
+
       - name: Build Xcode Project
         run: |
-          SCHEME=$(xcodebuild -project "AI Highlights.xcodeproj" -list | awk '/Schemes:/{flag=1;next} flag && NF {print $1; exit}')
-          echo "Detected Scheme: $SCHEME"
           xcodebuild -project "AI Highlights.xcodeproj" \
-            -scheme "$SCHEME" \
+            -scheme "AI Highlights" \
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES \
+            COMPILER_INDEX_STORE_ENABLE=NO \
             clean build
 
       - name: Package IPA
         run: |
           mkdir -p Payload
           APP_PATH=$(find build -name "*.app" -type d | head -n 1)
-          cp -r "$APP_PATH" Payload/
-          zip -r AI_Highlights_Unsigned.ipa Payload
-
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Unsigned-IPA
-          path: AI_Highlights_Unsigned.ipa
+          echo "Found App at: $APP_PATH"
