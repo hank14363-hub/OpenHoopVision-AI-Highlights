@@ -29,18 +29,18 @@ final class ScoreboardDetector {
     func reading(in image: CGImage) -> ScoreboardReading? {
         // CGImage cropping uses top-left image coordinates. Vision observations
         // within this band use bottom-left normalized coordinates.
-        let bandHeight = max(1, Int(Double(image.height) * 0.30))
-        let rect = CGRect(x: 0, y: CGFloat(image.height - bandHeight),
-                          width: CGFloat(image.width), height: CGFloat(bandHeight))
+        let bandPixelHeight = max(1, Int(Double(image.height) * 0.30))
+        let rect = CGRect(x: 0, y: CGFloat(image.height - bandPixelHeight),
+                          width: CGFloat(image.width), height: CGFloat(bandPixelHeight))
         guard let band = image.cropping(to: rect) else { return nil }
         do { try VNImageRequestHandler(cgImage: band, orientation: .up).perform([request]) }
         catch { return nil }
-        let tokens = tokens(from: request.results)
-        if let reading = ScoreboardParser.reading(from: tokens) { return reading }
+        let initialTokens = tokens(from: request.results)
+        if let reading = ScoreboardParser.reading(from: initialTokens) { return reading }
 
         // Low-resolution overlays often yield HOME/GUEST but lose the small
         // seven-segment digits. Enlarge the board region and run OCR again.
-        let labels = tokens.filter { ["HOME", "GUEST"].contains($0.text.uppercased()) }
+        let labels = initialTokens.filter { ["HOME", "GUEST"].contains($0.text.uppercased()) }
         guard let left = labels.min(by: { $0.midX < $1.midX }),
               let right = labels.max(by: { $0.midX < $1.midX }), left.midX < right.midX else { return nil }
         let cropX = max(0, (left.x - left.width * 0.2) * CGFloat(band.width))
