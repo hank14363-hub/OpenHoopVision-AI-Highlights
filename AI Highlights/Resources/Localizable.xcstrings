@@ -4039,6 +4039,28 @@
           }
         }
       }
+    },
+    "Visual candidate · Needs confirmation": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visual candidate · Needs confirmation"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "疑似进球 · 需确认"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "疑似進球 · 需確認"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

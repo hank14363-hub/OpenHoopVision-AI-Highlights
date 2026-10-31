@@ -77,12 +77,14 @@ actor VideoAnalysisService {
         var processedFrames = scores.count
         var backgroundFrames = 0
         var highestConfidence = scores.map(\.confidence).max() ?? 0
-        var eventFilter = ShotEventFilter(threshold: threshold, frameRate: sourceFrameRate)
+        let imageAspectRatio = metadata.map { Double($0.height) / Double($0.width) } ?? 1
+        var eventFilter = BasketMotionFilter(threshold: threshold, frameRate: sourceFrameRate,
+                                             imageAspectRatio: imageAspectRatio)
         let scoreboardDetector = ScoreboardDetector()
         var scoreFilter = ScoreChangeFilter()
         var lastScoreboardTime = scores.last(where: { $0.scoreboardSampled == true })?.time ?? -.infinity
         for hit in scores {
-            eventFilter.append(ShotEventFilter.Sample(time: hit.time, confidence: hit.confidence))
+            eventFilter.append(time: hit.time, objects: hit.objects ?? [])
             if hit.scoreboardSampled == true { scoreFilter.append(time: hit.time, reading: hit.scoreboard) }
         }
         var detectedGoals = scoreFilter.candidates(visualEvents: eventFilter.currentEvents).count
@@ -139,23 +141,24 @@ actor VideoAnalysisService {
                     detector = try CoreMLBasketballDetector(useGpu: true)
                 }
                 var usedBackground = false
-                let confidence = try autoreleasepool {
-                    func detect(background: Bool) throws -> Double {
+                let objects: [BasketballObject] = try autoreleasepool {
+                    func detect(background: Bool) throws -> [BasketballObject] {
                         if background, let backgroundDetector {
                             usedBackground = true
-                            return try backgroundDetector.ballInBasketConfidence(in: frameReader.backgroundImage(for: frame))
+                            return try backgroundDetector.detections(in: frameReader.backgroundImage(for: frame))
                         }
                         guard let detector else { throw DetectorError.missingModel }
-                        do { return try detector.ballInBasketConfidence(in: frame.image) }
+                        do { return try detector.detections(in: frame.image) }
                         catch {
                             guard let backgroundDetector else { throw error }
                             usedBackground = true
-                            return try backgroundDetector.ballInBasketConfidence(in: frameReader.backgroundImage(for: frame))
+                            return try backgroundDetector.detections(in: frameReader.backgroundImage(for: frame))
                         }
                     }
                     if let execution { return try execution.withFrameAccess { try detect(background: $0) } }
                     return try detect(background: false)
                 }
+                let confidence = BasketSpatialGate.confidence(in: objects, imageAspectRatio: imageAspectRatio)
                 processedFrames += 1
                 if usedBackground { backgroundFrames += 1 }
                 highestConfidence = max(highestConfidence, confidence)
@@ -171,10 +174,10 @@ actor VideoAnalysisService {
                     scoreFilter.append(time: timestamp, reading: scoreboard)
                 } else { scoreboard = nil }
                 let hit = AnalysisHit(time: timestamp, confidence: confidence,
-                                      scoreboardSampled: scoreboardSampled ? true : nil, scoreboard: scoreboard)
+                                      scoreboardSampled: scoreboardSampled ? true : nil, scoreboard: scoreboard, objects: objects)
                 scores.append(hit)
                 pendingCheckpointHits.append(hit)
-                eventFilter.append(ShotEventFilter.Sample(time: timestamp, confidence: confidence))
+                eventFilter.append(time: timestamp, objects: objects)
                 let now = ProcessInfo.processInfo.systemUptime
                 let frameDuration = frame.duration
                 let frameEnd = timestamp + (frameDuration.isFinite && frameDuration > 0 ? frameDuration : 0)
@@ -231,14 +234,17 @@ actor VideoAnalysisService {
         for hit in scan.scores where hit.scoreboardSampled == true {
             scoreFilter.append(time: hit.time, reading: hit.scoreboard)
         }
-        let visualEvents = ShotEventFilter.events(
-            in: scan.scores.map { ShotEventFilter.Sample(time: $0.time, confidence: $0.confidence) },
-            threshold: threshold, frameRate: scan.frameRate)
+        let imageAspectRatio = scan.metadata.map { Double($0.height) / Double($0.width) } ?? 1
+        var motionFilter = BasketMotionFilter(threshold: threshold, frameRate: scan.frameRate,
+                                              imageAspectRatio: imageAspectRatio)
+        for hit in scan.scores { motionFilter.append(time: hit.time, objects: hit.objects ?? []) }
+        let visualEvents = motionFilter.finish()
         return VideoAnalysisResult(
             duration: scan.duration,
             candidates: scoreFilter.candidates(visualEvents: visualEvents).map { event in
                 ShotCandidate(eventTime: min(max(0, event.time), scan.duration), confidence: event.confidence,
-                              origin: event.isScoreboard ? .scoreboard : nil)
+                              isSelected: !event.requiresReview,
+                              origin: event.isScoreboard ? .scoreboard : (event.requiresReview ? .visualReview : nil))
             },
             processedFrames: scan.scores.count, highestConfidence: scan.highestConfidence,
             confidenceThreshold: threshold, metadata: scan.metadata

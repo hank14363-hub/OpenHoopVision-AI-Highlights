@@ -16,6 +16,7 @@ struct ShotEventFilter {
         let time: TimeInterval
         let confidence: Double
         let supportingFrames: Int
+        var requiresReview: Bool = false
     }
 
     // Keep duplicate suppression much shorter than the exported clip's lead-in:

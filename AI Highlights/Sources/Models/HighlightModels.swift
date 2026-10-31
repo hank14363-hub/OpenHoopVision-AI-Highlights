@@ -7,6 +7,7 @@ struct AnalysisHit: Codable, Sendable {
     let confidence: Double
     var scoreboardSampled: Bool? = nil
     var scoreboard: ScoreboardReading? = nil
+    var objects: [BasketballObject]? = nil
 }
 
 struct AnalysisCheckpointBatch: Sendable {
@@ -97,7 +98,7 @@ enum AnalysisSettings {
 }
 
 enum BasketballModel {
-    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-spatial-scoreboard-v2-lowres"
+    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-motion-v3"
     static let resourceName = "BasketballDetector"
     static let inputWidth = 1280
     static let inputHeight = 736
@@ -254,9 +255,10 @@ struct ShotCandidate: Identifiable, Codable, Hashable, Sendable {
     /// Nil for legacy records, true once the user explicitly changes selection.
     var hasManualSelectionOverride: Bool?
 
-    enum Origin: String, Codable, Sendable { case manual, scoreboard }
+    enum Origin: String, Codable, Sendable { case manual, scoreboard, visualReview }
     var isManual: Bool { origin == .manual }
     var isScoreboard: Bool { origin == .scoreboard }
+    var needsVisualReview: Bool { origin == .visualReview }
 
     init(id: UUID = UUID(), eventTime: TimeInterval, confidence: Double, isSelected: Bool = true, origin: Origin? = nil, hasManualSelectionOverride: Bool? = nil) {
         self.id = id

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B40000000000000000000001 /* Sources/Services/BasketMotionEvidence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40000000000000000000002 /* Sources/Services/BasketMotionEvidence.swift */; };
 		B30000000000000000000003 /* Sources/Services/ScoreboardDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000004 /* Sources/Services/ScoreboardDetector.swift */; };
 		B30000000000000000000001 /* Sources/Services/BasketballEvidence.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30000000000000000000002 /* Sources/Services/BasketballEvidence.swift */; };
 		B20000000000000000000001 /* Sources/Services/ShotEventFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* Sources/Services/ShotEventFilter.swift */; };
@@ -44,6 +45,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B40000000000000000000002 /* Sources/Services/BasketMotionEvidence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/BasketMotionEvidence.swift; sourceTree = "<group>"; };
 		B30000000000000000000004 /* Sources/Services/ScoreboardDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/ScoreboardDetector.swift; sourceTree = "<group>"; };
 		B30000000000000000000002 /* Sources/Services/BasketballEvidence.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/BasketballEvidence.swift; sourceTree = "<group>"; };
 		B20000000000000000000002 /* Sources/Services/ShotEventFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/ShotEventFilter.swift; sourceTree = "<group>"; };
@@ -118,6 +120,7 @@
 			isa = PBXGroup;
 			children = (
 				B20000000000000000000002 /* Sources/Services/ShotEventFilter.swift */,
+				B40000000000000000000002 /* Sources/Services/BasketMotionEvidence.swift */,
 				B30000000000000000000004 /* Sources/Services/ScoreboardDetector.swift */,
 				B30000000000000000000002 /* Sources/Services/BasketballEvidence.swift */,
 				0000000000000000000000A6 /* Sources/Models/AppLanguage.swift */,
@@ -234,6 +237,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				B20000000000000000000001 /* Sources/Services/ShotEventFilter.swift in Sources */,
+				B40000000000000000000001 /* Sources/Services/BasketMotionEvidence.swift in Sources */,
 				B30000000000000000000003 /* Sources/Services/ScoreboardDetector.swift in Sources */,
 				B30000000000000000000001 /* Sources/Services/BasketballEvidence.swift in Sources */,
 				0000000000000000000000A7 /* Sources/Models/AppLanguage.swift in Sources */,

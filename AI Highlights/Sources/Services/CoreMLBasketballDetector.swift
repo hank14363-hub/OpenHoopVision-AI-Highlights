@@ -82,35 +82,41 @@ final class CoreMLBasketballDetector {
     }
 
     func ballInBasketConfidence(in image: CGImage) throws -> Double {
-        let fullObjects = try objects(in: image)
-        var best = BasketSpatialGate.confidence(in: fullObjects)
-        guard best < 0.70 else { return best }
+        BasketSpatialGate.confidence(in: try detections(in: image), imageAspectRatio: Double(image.height) / Double(image.width))
+    }
 
-        // The supplied recording is 640×360. At the full-frame 1280×736 input,
-        // its rim is often only a few dozen pixels. Re-run around up to two
-        // detected rims so the model sees the target at a useful scale. This is
-        // adaptive to camera cuts and pans; fixed court coordinates are unsafe.
-        let imageWidth = CGFloat(image.width)
-        let imageHeight = CGFloat(image.height)
-        let rims = fullObjects.filter { $0.classID == 1 && $0.isValid }
+    func detections(in image: CGImage) throws -> [BasketballObject] {
+        let imageWidth = Double(image.width)
+        let imageHeight = Double(image.height)
+        let fullObjects = try modelObjects(in: image).compactMap {
+            BasketImageGeometry.imageObject($0, imageWidth: imageWidth, imageHeight: imageHeight)
+        }
+        var combined = fullObjects
+        // Retain ball observations as well as target labels. A crop can supply
+        // a brief ball passage even when the full-frame class-2 score is high.
+        let rims = BasketImageGeometry.deduplicated(fullObjects)
+            .filter { $0.classID == 1 && $0.confidence >= 0.20 && $0.width <= 0.12 }
             .sorted { $0.confidence > $1.confidence }.prefix(2)
         for rim in rims {
-            let x = CGFloat(rim.x1 / Double(BasketballModel.inputWidth)) * imageWidth
-            let y = CGFloat(rim.y1 / Double(BasketballModel.inputHeight)) * imageHeight
-            let width = CGFloat(rim.width / Double(BasketballModel.inputWidth)) * imageWidth
-            let height = CGFloat(rim.height / Double(BasketballModel.inputHeight)) * imageHeight
-            let side = max(width * 6, max(height * 8, min(imageWidth, imageHeight) * 0.28))
-            let crop = CGRect(x: x + width / 2 - side / 2, y: y + height / 2 - side / 2,
-                              width: side, height: side).intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight)).integral
-            guard crop.width >= 24, crop.height >= 24, let cropped = image.cropping(to: crop) else { continue }
-            best = max(best, BasketSpatialGate.confidence(in: try objects(in: cropped)))
+            guard let region = BasketImageGeometry.crop(around: rim, imageWidth: imageWidth, imageHeight: imageHeight) else { continue }
+            let rectangle = CGRect(x: region.x * imageWidth, y: region.y * imageHeight,
+                                   width: region.width * imageWidth, height: region.height * imageHeight).integral
+                .intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
+            guard let cropped = image.cropping(to: rectangle) else { continue }
+            let actualRegion = ImageRegion(x: rectangle.minX / imageWidth, y: rectangle.minY / imageHeight,
+                                           width: rectangle.width / imageWidth, height: rectangle.height / imageHeight)
+            let cropObjects = try modelObjects(in: cropped).compactMap {
+                BasketImageGeometry.imageObject($0, imageWidth: Double(cropped.width),
+                                                imageHeight: Double(cropped.height), region: actualRegion)
+            }
+            combined.append(contentsOf: cropObjects)
         }
-        return best
+        return BasketImageGeometry.deduplicated(combined)
     }
 
     var inputDimensions: [Int] { [1, 3, BasketballModel.inputHeight, BasketballModel.inputWidth] }
 
-    private func objects(in image: CGImage) throws -> [BasketballObject] {
+    private func modelObjects(in image: CGImage) throws -> [BasketballObject] {
         do {
             try VNImageRequestHandler(cgImage: image, orientation: .up).perform([request])
         } catch {
@@ -134,7 +140,7 @@ final class CoreMLBasketballDetector {
         for row in 0..<detectionCount {
             let classID = scalar(output, batch: 0, row: row, field: 5, strides: strides)
             guard classID.isFinite, abs(classID.rounded() - classID) < 0.01,
-                  classID == 1 || classID == 2 else { continue }
+                  classID == 0 || classID == 1 || classID == 2 else { continue }
             let confidence = scalar(output, batch: 0, row: row, field: 4, strides: strides)
             guard confidence.isFinite, confidence >= 0.05, confidence <= 1 else { continue }
             // Verified in this model's MIL graph: anchor - distance = x1y1,

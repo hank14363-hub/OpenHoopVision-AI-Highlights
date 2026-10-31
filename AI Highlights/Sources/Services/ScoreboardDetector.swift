@@ -46,7 +46,10 @@ final class ScoreboardDetector {
               let right = labels.max(by: { $0.midX < $1.midX }), left.midX < right.midX else { return nil }
         let cropX = max(0, (left.x - left.width * 0.2) * CGFloat(band.width))
         let cropRight = min(CGFloat(band.width), (right.x + right.width * 1.2) * CGFloat(band.width))
-        let cropY = max(0, (left.y - left.height * 0.35) * CGFloat(band.height))
+        // Labels are above the digits. Convert Vision's bottom-left coordinates
+        // to CGImage's top-left coordinates, and include everything below them.
+        let labelTop = max(left.y + left.height, right.y + right.height)
+        let cropY = max(0, (1 - labelTop - max(left.height, right.height) * 0.35) * Double(band.height))
         let cropRect = CGRect(x: cropX, y: cropY, width: max(1, cropRight - cropX),
                               height: max(1, CGFloat(band.height) - cropY)).integral
         guard let board = band.cropping(to: cropRect),
@@ -59,16 +62,13 @@ final class ScoreboardDetector {
             let bandWidth = Double(band.width)
             let bandHeight = Double(band.height)
             let cropMinX = Double(cropRect.minX)
-            let cropMinY = Double(cropRect.minY)
+            let cropTop = Double(cropRect.minY)
             let cropWidth = Double(cropRect.width)
             let cropHeight = Double(cropRect.height)
             let enhanced = enhancedSource.map { token -> ScoreboardParser.Token in
-                let x = (cropMinX + token.x * cropWidth) / bandWidth
-                let y = (cropMinY + token.y * cropHeight) / bandHeight
-                let width = token.width * cropWidth / bandWidth
-                let height = token.height * cropHeight / bandHeight
-                return ScoreboardParser.Token(text: token.text, confidence: token.confidence,
-                                              x: x, y: y, width: width, height: height)
+                ScoreboardParser.remapped(token, cropX: cropMinX, cropTop: cropTop,
+                                          cropWidth: cropWidth, cropHeight: cropHeight,
+                                          bandWidth: bandWidth, bandHeight: bandHeight)
             }
             if let reading = ScoreboardParser.reading(from: enhanced) { return reading }
         }

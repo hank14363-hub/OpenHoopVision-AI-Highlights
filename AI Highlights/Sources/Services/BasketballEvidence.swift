@@ -1,8 +1,8 @@
 import Foundation
 
-/// Model-space xyxy coordinates, before Vision's letterbox is removed. Comparisons
-/// use the same space, so aspect-fit padding does not change relative geometry.
-struct BasketballObject {
+/// Normalized source-image xyxy coordinates, with a top-left origin. Model-space
+/// boxes are converted before combining full-frame and crop detections.
+struct BasketballObject: Codable, Sendable {
     let classID: Int
     let confidence: Double
     let x1: Double
@@ -23,15 +23,15 @@ struct BasketballObject {
 enum BasketSpatialGate {
     /// A class-2 label alone is insufficient. Require a detected rim in the same
     /// frame and a plausible target location/size relative to it.
-    static func confidence(in objects: [BasketballObject]) -> Double {
+    static func confidence(in objects: [BasketballObject], imageAspectRatio: Double = 1) -> Double {
         let rims = objects.filter { $0.isValid && $0.classID == 1 && $0.confidence >= 0.20 }
         return objects.filter { target in
             guard target.isValid, target.classID == 2 else { return false }
             return rims.contains { rim in
                 abs(target.midX - rim.midX) <= rim.width * 1.1 &&
-                target.midY >= rim.midY - rim.width * 0.8 &&
-                target.midY <= rim.midY + rim.width * 1.5 &&
-                target.width <= rim.width * 3 && target.height <= rim.width * 4
+                (target.midY - rim.midY) * imageAspectRatio >= -rim.width * 0.8 &&
+                (target.midY - rim.midY) * imageAspectRatio <= rim.width * 1.5 &&
+                target.width <= rim.width * 3 && target.height * imageAspectRatio <= rim.width * 4
             }
         }.map(\.confidence).max() ?? 0
     }
@@ -70,16 +70,39 @@ enum ScoreboardParser {
         var midY: Double { y + height / 2 }
     }
 
+    /// Crop coordinates use a top-left origin; OCR tokens use bottom-left.
+    static func remapped(_ token: Token, cropX: Double, cropTop: Double,
+                         cropWidth: Double, cropHeight: Double,
+                         bandWidth: Double, bandHeight: Double) -> Token {
+        let bottom = bandHeight - cropTop - cropHeight
+        return Token(text: token.text, confidence: token.confidence,
+                     x: (cropX + token.x * cropWidth) / bandWidth,
+                     y: (bottom + token.y * cropHeight) / bandHeight,
+                     width: token.width * cropWidth / bandWidth,
+                     height: token.height * cropHeight / bandHeight)
+    }
+
     /// Some gym overlays put HOME/GUEST above the two scores instead of placing
     /// team labels on either side. A token is accepted only when both labels are
     /// horizontally aligned with each other and the score pair sits below them.
-    private static func hasVerticalLabels(around score: Token, in tokens: [Token]) -> Bool {
-        let labels = tokens.filter { isLabel($0.text) }
-        guard let home = labels.min(by: { $0.midX < $1.midX }),
-              let guest = labels.max(by: { $0.midX < $1.midX }), home.midX < guest.midX,
+    private static func hasVerticalLabels(around score: Token, in tokens: [Token], split: (Token, Token)? = nil) -> Bool {
+        guard let home = tokens.first(where: { $0.text.uppercased().trimmingCharacters(in: .whitespaces) == "HOME" }),
+              let guest = tokens.first(where: { $0.text.uppercased().trimmingCharacters(in: .whitespaces) == "GUEST" }),
+              home.midX < guest.midX,
               abs(home.midY - guest.midY) < max(home.height, guest.height) * 1.4 else { return false }
-        return score.midY > max(home.midY, guest.midY) &&
-            score.x >= home.x - score.width && score.x + score.width <= guest.x + guest.width
+        // Vision coordinates originate at the bottom-left: below means LESS y.
+        let labelHeight = max(home.height, guest.height)
+        if let (left, right) = split {
+            // A period/foul digit between the teams is not the guest score.
+            guard abs(left.midX - home.midX) <= max(home.width * 0.7, left.width * 0.5),
+                  abs(right.midX - guest.midX) <= max(guest.width * 0.7, right.width * 0.5) else { return false }
+        } else {
+            guard score.x <= home.midX + home.width * 0.5,
+                  score.x + score.width >= guest.midX - guest.width * 0.5 else { return false }
+        }
+        return score.midY < min(home.midY, guest.midY) &&
+            min(home.midY, guest.midY) - score.midY <= labelHeight * 3.5 &&
+            score.x >= home.x - labelHeight && score.x + score.width <= guest.x + guest.width + labelHeight
     }
 
     private static let pairPattern = #"(?<![0-9])([0-9]{1,3})\s*[-–—·•]\s*([0-9]{1,3})(?![0-9])"#
@@ -107,14 +130,15 @@ enum ScoreboardParser {
         // Vision may return each number as a separate text observation.
         let numbers = valid.filter { $0.text.range(of: #"^\s*[0-9]{1,3}\s*$"#, options: .regularExpression) != nil }
         for left in numbers {
-            for right in numbers where right.x > left.x + left.width && right.x - left.x - left.width < 0.12 {
+            for right in numbers where right.x > left.x + left.width {
                 guard abs(left.midY - right.midY) <= max(left.height, right.height) * 0.6,
                       let l = Int(left.text.trimmingCharacters(in: .whitespaces)),
                       let r = Int(right.text.trimmingCharacters(in: .whitespaces)) else { continue }
                 let pair = Token(text: "", confidence: min(left.confidence, right.confidence), x: left.x,
                                  y: min(left.y, right.y), width: right.x + right.width - left.x,
                                  height: max(left.height, right.height))
-                guard hasLabels(around: pair, in: valid) || hasVerticalLabels(around: pair, in: valid) else { continue }
+                let horizontalPair = right.x - left.x - left.width < 0.12 && hasLabels(around: pair, in: valid)
+                guard horizontalPair || hasVerticalLabels(around: pair, in: valid, split: (left, right)) else { continue }
                 readings.append(ScoreboardReading(left: l, right: r, centerX: pair.midX,
                                                   centerY: pair.midY, confidence: pair.confidence))
             }
@@ -146,6 +170,7 @@ struct ScoreChangeFilter {
         let time: TimeInterval
         let confidence: Double // Zero for OCR-only; never invent a model score.
         let isScoreboard: Bool
+        var requiresReview: Bool = false
     }
     struct Event {
         let time: TimeInterval // Estimated play time; score graphics can update late.
@@ -243,7 +268,8 @@ struct ScoreChangeFilter {
         for (index, event) in visualEvents.enumerated() where !used.contains(index) {
             guard !events.contains(where: { abs($0.time - event.time) <= 6 }),
                   !coversVisualEvent(at: event.time) else { continue }
-            result.append(Candidate(time: event.time, confidence: event.confidence, isScoreboard: false))
+            result.append(Candidate(time: event.time, confidence: event.confidence, isScoreboard: false,
+                                    requiresReview: event.requiresReview))
         }
         return result.sorted { $0.time < $1.time }
     }

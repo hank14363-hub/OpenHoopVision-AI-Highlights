@@ -47,16 +47,24 @@ struct BasketballEvidenceTests {
         expect(ScoreboardParser.reading(from: scoreTokens("999-0")) == nil, "out-of-range score ignored")
         expect(ScoreboardParser.reading(from: [token("Home", x: 0.1), token("2-0", x: 0.4, confidence: 0.2), token("Away", x: 0.65)]) == nil, "low confidence OCR ignored")
         expect(ScoreboardParser.reading(from: scoreTokens("2-0") + [token("4-1", x: 0.45)]) == nil, "conflicting strips rejected")
-        let vertical = [token("HOME", x: 0.35, width: 0.10, y: 0.20),
-                        token("GUEST", x: 0.70, width: 0.12, y: 0.20),
-                        token("2", x: 0.43, width: 0.04, y: 0.55),
-                        token("1", x: 0.56, width: 0.04, y: 0.55)]
-        expect(ScoreboardParser.reading(from: vertical)?.left == 2, "vertical HOME/GUEST labels supported")
-        expect(ScoreboardParser.reading(from: vertical)?.right == 1, "vertical score pair supported")
-        let clock = [token("HOME", x: 0.35, width: 0.10, y: 0.20),
-                     token("GUEST", x: 0.70, width: 0.12, y: 0.20),
-                     token("5:25", x: 0.43, width: 0.14, y: 0.55)]
-        expect(ScoreboardParser.reading(from: clock) == nil, "vertical game clock is not a score")
+        let vertical = [token("HOME", x: 0.20, width: 0.10, y: 0.65),
+                        token("GUEST", x: 0.70, width: 0.12, y: 0.65),
+                        token("2", x: 0.23, width: 0.04, y: 0.30),
+                        token("1", x: 0.74, width: 0.04, y: 0.30)]
+        expect(ScoreboardParser.reading(from: vertical)?.left == 2, "Vision bottom-left labels: score below HOME")
+        expect(ScoreboardParser.reading(from: vertical)?.right == 1, "widely separated guest score supported")
+        let labels = Array(vertical.prefix(2))
+        expect(ScoreboardParser.reading(from: labels + [token("5:25", x: 0.43, width: 0.14, y: 0.30)]) == nil, "vertical game clock is not a score")
+        expect(ScoreboardParser.reading(from: labels + [token("2", x: 0.23, width: 0.04, y: 0.90), token("1", x: 0.74, width: 0.04, y: 0.90)]) == nil, "numbers above labels rejected")
+        expect(ScoreboardParser.reading(from: Array(vertical.prefix(3)) + [token("1", x: 0.49, width: 0.04, y: 0.30)]) == nil, "center period digit cannot substitute missing guest score")
+        expect(ScoreboardParser.reading(from: vertical + [token("4", x: 0.49, width: 0.04, y: 0.30)])?.right == 1, "period digit does not make score ambiguous")
+        expect(ScoreboardParser.reading(from: labels + [token("2-1", x: 0.22, width: 0.57, y: 0.30)])?.right == 1, "combined vertical score token supported")
+        expect(ScoreboardParser.reading(from: labels + [token("2-1", x: 0.43, width: 0.14, y: 0.30)]) == nil, "small central number pair not under teams")
+        let mappedToken = ScoreboardParser.remapped(token("2", x: 0.25, width: 0.1, y: 0.25),
+            cropX: 200, cropTop: 20, cropWidth: 400, cropHeight: 100, bandWidth: 1000, bandHeight: 200)
+        expect(abs(mappedToken.x - 0.3) < 0.000001, "enhanced OCR x maps to lower band")
+        expect(abs(mappedToken.y - 0.525) < 0.000001, "enhanced OCR restores bottom-left y after top-left crop")
+        expect(abs(mappedToken.height - 0.075) < 0.000001, "enhanced OCR scale maps to lower band")
 
         var filter = ScoreChangeFilter()
         stable(&filter, 0, 0)

@@ -23,6 +23,7 @@
 
 ## What it does
 
+- **Motion evidence and conservative selection:** retain ball, rim and target detections and seek an ordered above → rim → below descent relative to a stable rim. Appearance-only, incomplete-trajectory and ball-only candidates are labelled “Visual candidate · Needs confirmation” and start unchecked; users can select them after review. Stable score changes can also corroborate them.
 - **On-device scoring candidates:** use the bundled Core ML model to flag potential made baskets with confidence scores for review.
 - **Broadcast score support:** sparse, on-device Vision OCR can supplement distant shots when a labelled score strip is visible in the lower 30% of the video. Stable single-team increases of 1–3 points become candidates labelled for timing review. These use at least 8 seconds of lead-in and 3 seconds of lead-out because score graphics may update late; OCR-only candidates do not have a model confidence percentage.
 - **Low-resolution overlays:** when `HOME` and `GUEST` are stacked above the scores, the app retries OCR on an enlarged scoreboard crop. It also retries Core ML around detected rims instead of relying on fixed court coordinates.
@@ -38,7 +39,7 @@ Analysis scans the full video in order, sampling at up to 30 FPS, so longer vide
 ## Scope and limitations
 
 - Detection may be less reliable with poor camera angles, low-quality video, occlusion, or distant views.
-- Visual candidates require a nearby detected rim and repeated frames. Score OCR requires a readable lower score strip with team labels; clocks, first readings, long gaps, corrections, and large jumps do not establish a new basket. The two-second score-update offset is an estimate, not measured basket timing. Replays, missed OCR changes, and persistent model errors still need human review. OCR adds processing cost.
+- Full-frame and crop detections undo aspect-fit padding before mapping to source coordinates. Motion uses consistent image-width units on both axes and resets associations across gaps or rim jumps. A 2D passage can still mistake a near miss for a goal, and occlusion can leave real goals unconfirmed; model weights have not been retrained. Score OCR requires a readable lower score strip with team labels; clocks, first readings, long gaps, corrections, and large jumps do not establish a new basket. The two-second score-update offset is an estimate, not measured basket timing. Replays, missed OCR changes, and persistent model errors still need human review. Up to two crop retries, OCR and persisted object evidence add compute/storage cost. Re-analyze old scans; resume and cache reconstruction use the same motion rules.
 - The app suggests shot candidates for review; it does not identify players or provide scorekeeping or full-game statistics.
 - The app source and converted model are included; training data/configuration, the original checkpoint, and export script are not.
 
@@ -48,7 +49,7 @@ Analysis and highlight generation run on-device. AI Highlights does not upload v
 
 ## Requirements and build
 
-- iOS 17 or later
+- iOS / iPadOS 18 or later
 - Xcode with iOS platform support
 
 Open `AI Highlights.xcodeproj` and select the `AI Highlights` scheme. To build without signing from the project directory:

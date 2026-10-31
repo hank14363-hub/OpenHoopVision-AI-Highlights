@@ -199,6 +199,22 @@ struct ReviewView: View {
         return ContentUnavailableView(title, systemImage: symbol)
     }
 
+    private func playerTitle(_ candidate: ShotCandidate?, number: Int) -> String {
+        guard let candidate else { return String(localized: "Original video", bundle: AppLanguage.current.bundle) }
+        if candidate.needsVisualReview { return String(localized: "Visual candidate · Needs confirmation", bundle: AppLanguage.current.bundle) }
+        if candidate.isScoreboard { return String(localized: "Score change · Check timing", bundle: AppLanguage.current.bundle) }
+        if candidate.isManual { return String(localized: "Manual highlight \(number)", bundle: AppLanguage.current.bundle) }
+        return String(localized: "Highlight \(number) · \(candidate.confidence.formatted(.percent.precision(.fractionLength(0))))", bundle: AppLanguage.current.bundle)
+    }
+
+    private func candidateLabel(_ candidate: ShotCandidate, uncertain: Bool) -> String {
+        if candidate.needsVisualReview { return String(localized: "Visual candidate · Needs confirmation", bundle: AppLanguage.current.bundle) }
+        if candidate.isScoreboard { return String(localized: "Score change · Check timing", bundle: AppLanguage.current.bundle) }
+        if candidate.isManual { return String(localized: "Manual", bundle: AppLanguage.current.bundle) }
+        let label = uncertain ? String(localized: "Uncertain", bundle: AppLanguage.current.bundle) : "AI"
+        return "\(label) · \(candidate.confidence.formatted(.percent.precision(.fractionLength(0))))"
+    }
+
     private func playerCard(_ project: HighlightProject) -> some View {
         let candidate = project.candidates.first { $0.id == activeCandidateID }
         let range = candidate.map { project.clipRange(for: $0) } ?? ClipRange(start: 0, end: project.duration)
@@ -209,7 +225,7 @@ struct ReviewView: View {
                 .accessibilityIdentifier("review.previewPlayer")
                 .overlay(alignment: .top) {
                     HStack {
-                        Text(candidate.map { $0.isScoreboard ? String(localized: "Score change · Check timing", bundle: AppLanguage.current.bundle) : $0.isManual ? String(localized: "Manual highlight \(number ?? 1)", bundle: AppLanguage.current.bundle) : String(localized: "Highlight \(number ?? 1) · \($0.confidence.formatted(.percent.precision(.fractionLength(0))))", bundle: AppLanguage.current.bundle) } ?? String(localized: "Original video", bundle: AppLanguage.current.bundle))
+                        Text(playerTitle(candidate, number: number ?? 1))
                             .font(.system(size: 10, weight: .bold))
                             .padding(.horizontal, 10).padding(.vertical, 7)
                             .background(.black.opacity(0.68), in: Capsule())
@@ -378,7 +394,7 @@ struct ReviewView: View {
                         HStack(spacing: 7) {
                             Text(String(localized: "Highlight \(number)", bundle: AppLanguage.current.bundle))
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
-                            Text(candidate.isScoreboard ? String(localized: "Score change · Check timing", bundle: AppLanguage.current.bundle) : candidate.isManual ? String(localized: "Manual", bundle: AppLanguage.current.bundle) : "\(uncertain ? String(localized: "Uncertain", bundle: AppLanguage.current.bundle) : "AI") · \(candidate.confidence.formatted(.percent.precision(.fractionLength(0))))")
+                            Text(candidateLabel(candidate, uncertain: uncertain))
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(uncertain ? Color.yellow : Color.hoopMint)
                         }
@@ -490,7 +506,7 @@ struct ReviewView: View {
     }
 
     private func isUncertain(_ candidate: ShotCandidate) -> Bool {
-        !candidate.isManual && (candidate.isScoreboard || candidate.confidence < model.uncertainConfidenceThreshold)
+        !candidate.isManual && (candidate.needsVisualReview || candidate.isScoreboard || candidate.confidence < model.uncertainConfidenceThreshold)
     }
 
     private func visibleCandidates(_ project: HighlightProject) -> [IndexedCandidate] {
