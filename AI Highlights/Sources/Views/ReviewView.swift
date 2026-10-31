@@ -31,68 +31,7 @@ struct ReviewView: View {
     private var isBusy: Bool { isGenerating || isDownloading }
 
     var body: some View {
-        Group {
-            if let project {
-                // Derive once for this render; keep no separate cache that can become stale.
-                let visible = visibleCandidates(project)
-                let uncertain = uncertainCount(project)
-                let selectedCount = project.selectedCandidateCount
-                let selectedDuration = project.selectedDuration
-                let thumbnailsAllowed = allowsThumbnails
-                VStack(spacing: 0) {
-                    VStack(spacing: 12) {
-                        playerCard(project)
-                            .fixedSize(horizontal: false, vertical: true)
-                        filterBar(totalCount: project.candidates.count, uncertainCount: uncertain, selectedCount: selectedCount)
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 12)
-                    .background(Color.hoopInk)
-                    .zIndex(1)
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 6) {
-                                Color.clear.frame(height: 1).id("review.clipList.top")
-                                ForEach(visible, id: \.element.id) { indexed in
-                                    let candidate = indexed.element
-                                    SwipeToDeleteRow(id: candidate.id.uuidString, revealedRow: $revealedClipRow, onDelete: {
-                                        removeHighlight(candidate)
-                                    }, deleteLabel: String(localized: "Delete Highlight", bundle: AppLanguage.current.bundle)) {
-                                        candidateRow(candidate, project: project, number: indexed.offset + 1, allowsThumbnails: thumbnailsAllowed)
-                                    }
-                                }
-                                if visible.isEmpty {
-                                    ContentUnavailableView(filter == .uncertain ? String(localized: "No clips need review", bundle: AppLanguage.current.bundle) : (filter == .selected ? String(localized: "No clips selected", bundle: AppLanguage.current.bundle) : String(localized: "No highlight clips", bundle: AppLanguage.current.bundle)),
-                                                           systemImage: filter == .uncertain ? "checkmark.seal" : "checkmark.circle")
-                                        .padding(.top, 24)
-                                }
-                            }
-                            .padding(.bottom, 12)
-                        }
-                        .contentMargins(.horizontal, 12, for: .scrollContent)
-                        .contentMargins(.trailing, -7, for: .scrollIndicators)
-                        .scrollClipDisabled()
-                        .padding(.horizontal, 6)
-                        .accessibilityIdentifier("review.clipList")
-                        .onChange(of: visible.map(\.element.id)) { _, _ in
-                            revealedClipRow = nil
-                            proxy.scrollTo("review.clipList.top", anchor: .top)
-                        }
-                    }
-                }
-                .clipped()
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    selectionFooter(project: project, selectedCount: selectedCount, duration: selectedDuration)
-                        .padding(.bottom, -15)
-                }
-                .disabled(isBusy)
-                .onAppear {
-                    configurePlayback(project: project, candidate: project.candidates.first, autoplay: false)
-                }
-            } else {
-                ContentUnavailableView(String(localized: "Video not found", bundle: AppLanguage.current.bundle), systemImage: "video.slash")
-            }
-        }
+        reviewScreen
         .hoopScreen()
         .navigationTitle(String(localized: "High Moments", bundle: AppLanguage.current.bundle))
         .navigationBarTitleDisplayMode(.inline)
@@ -121,6 +60,113 @@ struct ReviewView: View {
         .alert(errorTitle, isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
             Button(String(localized: "OK", bundle: AppLanguage.current.bundle), role: .cancel) { errorMessage = nil }
         } message: { Text(errorMessage ?? String(localized: "Please try again.", bundle: AppLanguage.current.bundle)) }
+    }
+
+    @ViewBuilder
+    private var reviewScreen: some View {
+        if let project {
+            reviewContent(project)
+        } else {
+            ContentUnavailableView(
+                String(localized: "Video not found", bundle: AppLanguage.current.bundle),
+                systemImage: "video.slash"
+            )
+        }
+    }
+
+    private func reviewContent(_ project: HighlightProject) -> some View {
+        // Derive these values once for this render; do not keep a separate cache that can become stale.
+        let visible = visibleCandidates(project)
+        let uncertain = uncertainCount(project)
+        let selectedCount = project.selectedCandidateCount
+        let selectedDuration = project.selectedDuration
+
+        return VStack(spacing: 0) {
+            reviewHeader(project: project, uncertainCount: uncertain, selectedCount: selectedCount)
+            clipList(project: project, visible: visible)
+        }
+        .clipped()
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            selectionFooter(project: project, selectedCount: selectedCount, duration: selectedDuration)
+                .padding(.bottom, -15)
+        }
+        .disabled(isBusy)
+        .onAppear {
+            configurePlayback(project: project, candidate: project.candidates.first, autoplay: false)
+        }
+    }
+
+    private func reviewHeader(project: HighlightProject, uncertainCount: Int, selectedCount: Int) -> some View {
+        VStack(spacing: 12) {
+            playerCard(project)
+                .fixedSize(horizontal: false, vertical: true)
+            filterBar(totalCount: project.candidates.count, uncertainCount: uncertainCount, selectedCount: selectedCount)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 12)
+        .background(Color.hoopInk)
+        .zIndex(1)
+    }
+
+    private func clipList(project: HighlightProject, visible: [IndexedCandidate]) -> some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 6) {
+                    Color.clear.frame(height: 1).id("review.clipList.top")
+                    ForEach(visible) { indexed in
+                        candidateSwipeRow(indexed, project: project)
+                    }
+                    if visible.isEmpty {
+                        emptyClipState
+                            .padding(.top, 24)
+                    }
+                }
+                .padding(.bottom, 12)
+            }
+            .contentMargins(.horizontal, 12, for: .scrollContent)
+            .contentMargins(.trailing, -7, for: .scrollIndicators)
+            .scrollClipDisabled()
+            .padding(.horizontal, 6)
+            .accessibilityIdentifier("review.clipList")
+            .onChange(of: visible.map(\.id)) { _, _ in
+                revealedClipRow = nil
+                proxy.scrollTo("review.clipList.top", anchor: .top)
+            }
+        }
+    }
+
+    private func candidateSwipeRow(_ indexed: IndexedCandidate, project: HighlightProject) -> some View {
+        let candidate = indexed.candidate
+        return SwipeToDeleteRow(
+            id: candidate.id.uuidString,
+            revealedRow: $revealedClipRow,
+            onDelete: { removeHighlight(candidate) },
+            deleteLabel: String(localized: "Delete Highlight", bundle: AppLanguage.current.bundle)
+        ) {
+            candidateRow(
+                candidate,
+                project: project,
+                number: indexed.offset + 1,
+                allowsThumbnails: allowsThumbnails
+            )
+        }
+    }
+
+    private var emptyClipState: some View {
+        let title: String
+        let symbol: String
+        switch filter {
+        case .uncertain:
+            title = String(localized: "No clips need review", bundle: AppLanguage.current.bundle)
+            symbol = "checkmark.seal"
+        case .selected:
+            title = String(localized: "No clips selected", bundle: AppLanguage.current.bundle)
+            symbol = "checkmark.circle"
+        case .all:
+            title = String(localized: "No highlight clips", bundle: AppLanguage.current.bundle)
+            symbol = "checkmark.circle"
+        }
+        return ContentUnavailableView(title, systemImage: symbol)
     }
 
     private func playerCard(_ project: HighlightProject) -> some View {
@@ -417,8 +463,12 @@ struct ReviewView: View {
         !candidate.isManual && candidate.confidence < model.uncertainConfidenceThreshold
     }
 
-    private func visibleCandidates(_ project: HighlightProject) -> [(offset: Int, element: ShotCandidate)] {
-        let filtered = project.candidates.enumerated().filter { _, candidate in
+    private func visibleCandidates(_ project: HighlightProject) -> [IndexedCandidate] {
+        let indexed = project.candidates.enumerated().map { offset, candidate in
+            IndexedCandidate(offset: offset, candidate: candidate)
+        }
+        let filtered = indexed.filter { indexed in
+            let candidate = indexed.candidate
             switch filter {
             case .all: return true
             case .uncertain: return isUncertain(candidate)
@@ -426,8 +476,8 @@ struct ReviewView: View {
             }
         }
         return filtered.sorted { left, right in
-            let lhs = left.element
-            let rhs = right.element
+            let lhs = left.candidate
+            let rhs = right.candidate
             switch sort {
             case .timeAscending: return lhs.eventTime < rhs.eventTime
             case .timeDescending: return lhs.eventTime > rhs.eventTime
@@ -509,6 +559,13 @@ struct ReviewView: View {
             }
         }
     }
+}
+
+private struct IndexedCandidate: Identifiable {
+    let offset: Int
+    let candidate: ShotCandidate
+
+    var id: UUID { candidate.id }
 }
 
 private enum HighlightFilter: String, Identifiable {
