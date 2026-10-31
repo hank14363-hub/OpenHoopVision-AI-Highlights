@@ -24,6 +24,7 @@
 ## What it does
 
 - **On-device scoring candidates:** use the bundled Core ML model to flag potential made baskets with confidence scores for review.
+- **Broadcast score support:** sparse, on-device Vision OCR can supplement distant shots when a labelled score strip is visible in the lower 30% of the video. Stable single-team increases of 1–3 points become candidates labelled for timing review. These use at least 8 seconds of lead-in and 3 seconds of lead-out because score graphics may update late; OCR-only candidates do not have a model confidence percentage.
 - **Adjustable, human-reviewed results:** tune detection and review thresholds, inspect uncertain candidates, and add or remove moments manually.
 - **Flexible highlight creation:** adjust clip lead-in and lead-out, merge overlapping selections in source-video order, retain available source audio, and export an MP4.
 
@@ -36,6 +37,7 @@ Analysis scans the full video in order, sampling at up to 30 FPS, so longer vide
 ## Scope and limitations
 
 - Detection may be less reliable with poor camera angles, low-quality video, occlusion, or distant views.
+- Visual candidates require a nearby detected rim and repeated frames. Score OCR requires a readable lower score strip with team labels; clocks, first readings, long gaps, corrections, and large jumps do not establish a new basket. The two-second score-update offset is an estimate, not measured basket timing. Replays, missed OCR changes, and persistent model errors still need human review. OCR adds processing cost.
 - The app suggests shot candidates for review; it does not identify players or provide scorekeeping or full-game statistics.
 - The app source and converted model are included; training data/configuration, the original checkpoint, and export script are not.
 

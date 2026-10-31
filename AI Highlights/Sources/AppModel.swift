@@ -645,7 +645,8 @@ final class AppModel {
         var result = result
         for index in result.candidates.indices
             where !result.candidates[index].isManual && result.candidates[index].hasManualSelectionOverride != true {
-            result.candidates[index].isSelected = result.candidates[index].confidence >= uncertainConfidenceThreshold
+            result.candidates[index].isSelected = result.candidates[index].isScoreboard ||
+                result.candidates[index].confidence >= uncertainConfidenceThreshold
         }
         return result
     }

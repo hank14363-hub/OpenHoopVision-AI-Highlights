@@ -209,7 +209,7 @@ struct ReviewView: View {
                 .accessibilityIdentifier("review.previewPlayer")
                 .overlay(alignment: .top) {
                     HStack {
-                        Text(candidate.map { $0.isManual ? String(localized: "Manual highlight \(number ?? 1)", bundle: AppLanguage.current.bundle) : String(localized: "Highlight \(number ?? 1) · \($0.confidence.formatted(.percent.precision(.fractionLength(0))))", bundle: AppLanguage.current.bundle) } ?? String(localized: "Original video", bundle: AppLanguage.current.bundle))
+                        Text(candidate.map { $0.isScoreboard ? String(localized: "Score change · Check timing", bundle: AppLanguage.current.bundle) : $0.isManual ? String(localized: "Manual highlight \(number ?? 1)", bundle: AppLanguage.current.bundle) : String(localized: "Highlight \(number ?? 1) · \($0.confidence.formatted(.percent.precision(.fractionLength(0))))", bundle: AppLanguage.current.bundle) } ?? String(localized: "Original video", bundle: AppLanguage.current.bundle))
                             .font(.system(size: 10, weight: .bold))
                             .padding(.horizontal, 10).padding(.vertical, 7)
                             .background(.black.opacity(0.68), in: Capsule())
@@ -378,7 +378,7 @@ struct ReviewView: View {
                         HStack(spacing: 7) {
                             Text(String(localized: "Highlight \(number)", bundle: AppLanguage.current.bundle))
                                 .font(.system(size: 14, weight: .bold, design: .rounded))
-                            Text(candidate.isManual ? String(localized: "Manual", bundle: AppLanguage.current.bundle) : "\(uncertain ? String(localized: "Uncertain", bundle: AppLanguage.current.bundle) : "AI") · \(candidate.confidence.formatted(.percent.precision(.fractionLength(0))))")
+                            Text(candidate.isScoreboard ? String(localized: "Score change · Check timing", bundle: AppLanguage.current.bundle) : candidate.isManual ? String(localized: "Manual", bundle: AppLanguage.current.bundle) : "\(uncertain ? String(localized: "Uncertain", bundle: AppLanguage.current.bundle) : "AI") · \(candidate.confidence.formatted(.percent.precision(.fractionLength(0))))")
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(uncertain ? Color.yellow : Color.hoopMint)
                         }
@@ -490,7 +490,7 @@ struct ReviewView: View {
     }
 
     private func isUncertain(_ candidate: ShotCandidate) -> Bool {
-        !candidate.isManual && candidate.confidence < model.uncertainConfidenceThreshold
+        !candidate.isManual && (candidate.isScoreboard || candidate.confidence < model.uncertainConfidenceThreshold)
     }
 
     private func visibleCandidates(_ project: HighlightProject) -> [IndexedCandidate] {

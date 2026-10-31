@@ -25,7 +25,7 @@ struct ShotEventFilterTests {
     static func main() {
         expect(events([]).isEmpty, "empty input")
         expect(events([Sample(time: 1, confidence: 0.99)]).isEmpty, "a single high score must not count")
-        expect(events(Array(burst(1).prefix(2))).isEmpty, "two frames at 30 FPS are insufficient")
+        expect(events(Array(burst(1).prefix(2))).count == 1, "two rim-supported frames retain a brief distant basket")
         expect(events(burst(1)).count == 1, "a short, repeatedly confirmed event is retained")
         expect(abs((events(burst(1)).first?.time ?? 0) - (1 + 1 / 30)) < 0.000001, "use the peak frame's time")
         expect(events(burst(1, peak: 0.40)).isEmpty, "scores below threshold are rejected")

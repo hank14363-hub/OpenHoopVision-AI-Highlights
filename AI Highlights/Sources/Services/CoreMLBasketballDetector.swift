@@ -33,7 +33,6 @@ enum DetectorError: LocalizedError {
 final class CoreMLBasketballDetector {
     private static let detectionCount = 300
     private static let valuesPerDetection = 6
-    private static let targetClassID: Float = 2
 
     private let visionModel: VNCoreMLModel
     private let request: VNCoreMLRequest
@@ -92,28 +91,34 @@ final class CoreMLBasketballDetector {
               let output = observations.lazy.compactMap({ $0.featureValue.multiArrayValue }).first else {
             throw DetectorError.unsupportedOutput
         }
-        return try Self.maximumTargetConfidence(in: output)
+        return try Self.spatiallySupportedConfidence(in: output)
     }
 
     var inputDimensions: [Int] { [1, 3, BasketballModel.inputHeight, BasketballModel.inputWidth] }
 
-    private static func maximumTargetConfidence(in output: MLMultiArray) throws -> Double {
+    private static func spatiallySupportedConfidence(in output: MLMultiArray) throws -> Double {
         let shape = output.shape.map(\.intValue)
         let strides = output.strides.map(\.intValue)
         guard shape == [1, detectionCount, valuesPerDetection], strides.count == 3 else {
             throw DetectorError.unsupportedOutput
         }
 
-        var maximum: Float = 0
+        var objects: [BasketballObject] = []
         for row in 0..<detectionCount {
             let classID = scalar(output, batch: 0, row: row, field: 5, strides: strides)
-            guard classID.isFinite, abs(classID.rounded() - classID) < 0.01, classID == targetClassID else { continue }
+            guard classID.isFinite, abs(classID.rounded() - classID) < 0.01,
+                  classID == 1 || classID == 2 else { continue }
             let confidence = scalar(output, batch: 0, row: row, field: 4, strides: strides)
-            if confidence.isFinite, confidence >= 0, confidence <= 1 {
-                maximum = max(maximum, confidence)
-            }
+            guard confidence.isFinite, confidence >= 0.05, confidence <= 1 else { continue }
+            // Verified in this model's MIL graph: anchor - distance = x1y1,
+            // anchor + distance = x2y2, then multiplied by the pixel stride.
+            objects.append(BasketballObject(classID: Int(classID), confidence: Double(confidence),
+                x1: Double(scalar(output, batch: 0, row: row, field: 0, strides: strides)),
+                y1: Double(scalar(output, batch: 0, row: row, field: 1, strides: strides)),
+                x2: Double(scalar(output, batch: 0, row: row, field: 2, strides: strides)),
+                y2: Double(scalar(output, batch: 0, row: row, field: 3, strides: strides))))
         }
-        return Double(maximum)
+        return BasketSpatialGate.confidence(in: objects)
     }
 
     private static func scalar(_ array: MLMultiArray, batch: Int, row: Int, field: Int, strides: [Int]) -> Float {

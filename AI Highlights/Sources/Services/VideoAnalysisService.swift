@@ -78,10 +78,14 @@ actor VideoAnalysisService {
         var backgroundFrames = 0
         var highestConfidence = scores.map(\.confidence).max() ?? 0
         var eventFilter = ShotEventFilter(threshold: threshold, frameRate: sourceFrameRate)
+        let scoreboardDetector = ScoreboardDetector()
+        var scoreFilter = ScoreChangeFilter()
+        var lastScoreboardTime = scores.last(where: { $0.scoreboardSampled == true })?.time ?? -.infinity
         for hit in scores {
             eventFilter.append(ShotEventFilter.Sample(time: hit.time, confidence: hit.confidence))
+            if hit.scoreboardSampled == true { scoreFilter.append(time: hit.time, reading: hit.scoreboard) }
         }
-        var detectedGoals = eventFilter.candidateCount
+        var detectedGoals = scoreFilter.candidates(visualEvents: eventFilter.currentEvents).count
         let processingStart = ProcessInfo.processInfo.systemUptime
         var lastProgressUpdate = processingStart
         var lastCheckpointTime = processingStart
@@ -111,7 +115,7 @@ actor VideoAnalysisService {
 
         func flushCheckpoint() async {
             guard !pendingCheckpointHits.isEmpty, let lastHit = pendingCheckpointHits.last else { return }
-            detectedGoals = eventFilter.candidateCount
+            detectedGoals = scoreFilter.candidates(visualEvents: eventFilter.currentEvents).count
             let processedVideoTime = min(duration, max(0, lastHit.time))
             let videoFraction = min(1, max(0, processedVideoTime / duration))
             let performance = AnalysisPerformance(processedFrames: processedFrames,
@@ -155,7 +159,19 @@ actor VideoAnalysisService {
                 processedFrames += 1
                 if usedBackground { backgroundFrames += 1 }
                 highestConfidence = max(highestConfidence, confidence)
-                let hit = AnalysisHit(time: timestamp, confidence: confidence)
+                let scoreboardSampled = timestamp - lastScoreboardTime >= 0.5 - 0.001
+                let scoreboard: ScoreboardReading?
+                if scoreboardSampled {
+                    // Software rendering keeps sparse OCR safe during a background transition.
+                    scoreboard = try autoreleasepool {
+                        let image = execution == nil ? frame.image : try frameReader.backgroundImage(for: frame)
+                        return scoreboardDetector.reading(in: image)
+                    }
+                    lastScoreboardTime = timestamp
+                    scoreFilter.append(time: timestamp, reading: scoreboard)
+                } else { scoreboard = nil }
+                let hit = AnalysisHit(time: timestamp, confidence: confidence,
+                                      scoreboardSampled: scoreboardSampled ? true : nil, scoreboard: scoreboard)
                 scores.append(hit)
                 pendingCheckpointHits.append(hit)
                 eventFilter.append(ShotEventFilter.Sample(time: timestamp, confidence: confidence))
@@ -165,7 +181,7 @@ actor VideoAnalysisService {
                 let videoFraction = min(1, max(0, frameEnd / duration))
                 if processedFrames == 1 || now - lastProgressUpdate >= 0.5 {
                     lastProgressUpdate = now
-                    detectedGoals = eventFilter.candidateCount
+                    detectedGoals = scoreFilter.candidates(visualEvents: eventFilter.currentEvents).count
                     let performance = AnalysisPerformance(
                         processedFrames: processedFrames,
                         elapsedSeconds: now - processingStart,
@@ -193,7 +209,7 @@ actor VideoAnalysisService {
         try Task.checkCancellation()
         guard processedFrames > 0 else { throw VideoAnalysisError.unreadableVideo }
 
-        detectedGoals = eventFilter.finish().count
+        detectedGoals = scoreFilter.candidates(visualEvents: eventFilter.finish()).count
         let finishedAt = ProcessInfo.processInfo.systemUptime
         let rollingFPS = recentFPS(at: finishedAt, processedFrames: processedFrames)
         let performance = AnalysisPerformance(
@@ -211,14 +227,18 @@ actor VideoAnalysisService {
     }
 
     private func makeResult(scan: CompletedScan, threshold: Double) -> VideoAnalysisResult {
-        VideoAnalysisResult(
+        var scoreFilter = ScoreChangeFilter()
+        for hit in scan.scores where hit.scoreboardSampled == true {
+            scoreFilter.append(time: hit.time, reading: hit.scoreboard)
+        }
+        let visualEvents = ShotEventFilter.events(
+            in: scan.scores.map { ShotEventFilter.Sample(time: $0.time, confidence: $0.confidence) },
+            threshold: threshold, frameRate: scan.frameRate)
+        return VideoAnalysisResult(
             duration: scan.duration,
-            candidates: ShotEventFilter.events(
-                in: scan.scores.map { ShotEventFilter.Sample(time: $0.time, confidence: $0.confidence) },
-                threshold: threshold,
-                frameRate: scan.frameRate
-            ).map { event in
-                ShotCandidate(eventTime: min(max(0, event.time), scan.duration), confidence: event.confidence)
+            candidates: scoreFilter.candidates(visualEvents: visualEvents).map { event in
+                ShotCandidate(eventTime: min(max(0, event.time), scan.duration), confidence: event.confidence,
+                              origin: event.isScoreboard ? .scoreboard : nil)
             },
             processedFrames: scan.scores.count, highestConfidence: scan.highestConfidence,
             confidenceThreshold: threshold, metadata: scan.metadata

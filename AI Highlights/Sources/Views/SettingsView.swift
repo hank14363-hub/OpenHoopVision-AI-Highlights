@@ -40,7 +40,7 @@ struct SettingsView: View {
                 ), unit: String(localized: "s", bundle: AppLanguage.current.bundle), range: 0...30, fractionDigits: 1, accessibilityID: "settings.clipLeadOut")
                 rowDivider
                 DisclosureGroup {
-                    Text(String(localized: "Candidates require repeated detections across nearby frames. Isolated spikes and persistent detections are ignored, and nearby duplicates are merged. Short or obscured baskets can be missed. Lower the detection threshold and analyze again if needed. Candidates below the review threshold are marked as uncertain.", bundle: AppLanguage.current.bundle))
+                    Text(String(localized: "Visual candidates require a nearby rim and repeated detections. A readable score strip can add candidates after a stable 1–3 point increase. Score changes need timing review and include at least 8 seconds before and 3 seconds after the estimated event. Missing score graphics do not disable visual detection. Thresholds affect visual candidates; score changes are listed for review. Distant or obscured baskets can still be missed.", bundle: AppLanguage.current.bundle))
                         .font(.system(size: 12)).foregroundStyle(Color.hoopMuted).padding(.bottom, 14)
                 } label: {
                     HStack(spacing: 10) {

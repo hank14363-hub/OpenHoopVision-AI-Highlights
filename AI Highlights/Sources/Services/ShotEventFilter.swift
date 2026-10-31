@@ -54,7 +54,9 @@ struct ShotEventFilter {
             fps = 30
         }
         let interval = 1 / fps
-        let frames = fps >= 12 ? 3 : 2
+        // The detector now requires a nearby rim. A distant ball can pass the
+        // net in only two sampled frames; three is unnecessarily restrictive.
+        let frames = 2
         minimumFrames = frames
         maximumSupportGap = max(0.12, 2.5 * interval)
         confirmationWindow = max(0.30, Double(frames - 1) * interval * 1.5)
@@ -100,10 +102,12 @@ struct ShotEventFilter {
     }
 
     /// The active run is provisional: the count can fall if it becomes prolonged.
-    var candidateCount: Int {
+    var candidateCount: Int { currentEvents.count }
+
+    var currentEvents: [Event] {
         var proposals = completedEvents
         if let current = run, let event = event(from: current) { proposals.append(event) }
-        return Self.suppressDuplicates(proposals).count
+        return Self.suppressDuplicates(proposals)
     }
 
     mutating func finish() -> [Event] {

@@ -5,6 +5,8 @@ import Observation
 struct AnalysisHit: Codable, Sendable {
     let time: TimeInterval
     let confidence: Double
+    var scoreboardSampled: Bool? = nil
+    var scoreboard: ScoreboardReading? = nil
 }
 
 struct AnalysisCheckpointBatch: Sendable {
@@ -95,7 +97,7 @@ enum AnalysisSettings {
 }
 
 enum BasketballModel {
-    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2"
+    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-spatial-scoreboard-v1"
     static let resourceName = "BasketballDetector"
     static let inputWidth = 1280
     static let inputHeight = 736
@@ -252,8 +254,9 @@ struct ShotCandidate: Identifiable, Codable, Hashable, Sendable {
     /// Nil for legacy records, true once the user explicitly changes selection.
     var hasManualSelectionOverride: Bool?
 
-    enum Origin: String, Codable, Sendable { case manual }
+    enum Origin: String, Codable, Sendable { case manual, scoreboard }
     var isManual: Bool { origin == .manual }
+    var isScoreboard: Bool { origin == .scoreboard }
 
     init(id: UUID = UUID(), eventTime: TimeInterval, confidence: Double, isSelected: Bool = true, origin: Origin? = nil, hasManualSelectionOverride: Bool? = nil) {
         self.id = id
@@ -265,8 +268,12 @@ struct ShotCandidate: Identifiable, Codable, Hashable, Sendable {
     }
 
     func clipRange(videoDuration: TimeInterval, settings: HighlightClipSettings = .default) -> ClipRange {
-        let start = min(videoDuration, max(0, eventTime - settings.before))
-        let end = min(videoDuration, eventTime + settings.after)
+        // Score graphics update after the play. Include enough context for
+        // review instead of cutting at the late graphic update itself.
+        let before = isScoreboard ? max(8, settings.before) : settings.before
+        let after = isScoreboard ? max(3, settings.after) : settings.after
+        let start = min(videoDuration, max(0, eventTime - before))
+        let end = min(videoDuration, eventTime + after)
         return ClipRange(start: start, end: max(start, end))
     }
 }

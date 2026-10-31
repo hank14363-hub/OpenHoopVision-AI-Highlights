@@ -41,6 +41,18 @@ jobs:
             -o "$TEST_BINARY"
           "$TEST_BINARY"
 
+      - name: Test spatial and scoreboard evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_BINARY="$RUNNER_TEMP/basketball-evidence-tests"
+          xcrun swiftc -swift-version 5 -parse-as-library \
+            "AI Highlights/Sources/Services/ShotEventFilter.swift" \
+            "AI Highlights/Sources/Services/BasketballEvidence.swift" \
+            "Tests/BasketballEvidenceTests.swift" \
+            -o "$TEST_BINARY"
+          "$TEST_BINARY"
+
       - name: Build Xcode project
         shell: bash
         run: |
