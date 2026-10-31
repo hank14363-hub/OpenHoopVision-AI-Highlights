@@ -23,6 +23,7 @@ struct VideoAnalysisResult: Codable, Sendable {
     let highestConfidence: Double
     let confidenceThreshold: Double
     var metadata: VideoMetadata? = nil
+    var diagnostics: BasketAnalysisDiagnostics? = nil
 }
 
 enum VideoAnalysisError: LocalizedError {
@@ -98,7 +99,7 @@ enum AnalysisSettings {
 }
 
 enum BasketballModel {
-    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-strict-motion-v4"
+    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-balanced-v5"
     static let resourceName = "BasketballDetector"
     static let inputWidth = 1280
     static let inputHeight = 736

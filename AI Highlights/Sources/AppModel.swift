@@ -651,6 +651,26 @@ final class AppModel {
         return result
     }
 
+    func analysisDiagnosticData(projectID: UUID) throws -> Data {
+        guard let project = project(withID: projectID) else { throw CompositionError.missingDraft }
+        struct Report: Encodable {
+            let schemaVersion: Int
+            let appVersion: String
+            let analysisVersion: String?
+            let videoDuration: TimeInterval
+            let result: VideoAnalysisResult?
+            let reviewCandidates: [ShotCandidate]
+        }
+        let job = analysisJobs[project.sourceFileName]
+        let report = Report(schemaVersion: 1,
+            appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+            analysisVersion: job?.modelVersion, videoDuration: project.duration,
+            result: job?.result, reviewCandidates: project.candidates)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try encoder.encode(report)
+    }
+
     func project(withID id: UUID) -> HighlightProject? {
         if draft?.id == id { return draft }
         return projects.first { $0.id == id }

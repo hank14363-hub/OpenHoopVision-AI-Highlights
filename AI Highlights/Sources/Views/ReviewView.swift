@@ -2,6 +2,7 @@ import AVFoundation
 import AVKit
 import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ReviewView: View {
     let projectID: UUID
@@ -25,6 +26,8 @@ struct ReviewView: View {
     @State private var manualFeedback: String?
     @State private var manualFeedbackTask: Task<Void, Never>?
     @State private var revealedClipRow: String?
+    @State private var isExportingDiagnostics = false
+    @State private var diagnosticDocument = AnalysisDiagnosticDocument(data: Data())
 
     private var project: HighlightProject? { model.project(withID: projectID) }
     private var allowsThumbnails: Bool { !model.hasActiveAnalyses }
@@ -36,6 +39,13 @@ struct ReviewView: View {
 
     private var reviewPage: some View {
         observedReviewPage
+            .fileExporter(isPresented: $isExportingDiagnostics, document: diagnosticDocument,
+                          contentType: .json, defaultFilename: "AI_Highlights_Diagnostics") { result in
+                if case .failure(let error) = result {
+                    errorTitle = String(localized: "Unable to Export Diagnostics", bundle: AppLanguage.current.bundle)
+                    errorMessage = error.localizedDescription
+                }
+            }
             .alert(errorTitle, isPresented: isErrorPresented) {
                 Button(String(localized: "OK", bundle: AppLanguage.current.bundle), role: .cancel) {
                     errorMessage = nil
@@ -67,6 +77,20 @@ struct ReviewView: View {
     @ToolbarContentBuilder
     private var retryToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                do {
+                    diagnosticDocument = AnalysisDiagnosticDocument(data: try model.analysisDiagnosticData(projectID: projectID))
+                    isExportingDiagnostics = true
+                } catch {
+                    errorTitle = String(localized: "Unable to Export Diagnostics", bundle: AppLanguage.current.bundle)
+                    errorMessage = error.localizedDescription
+                }
+            } label: {
+                Image(systemName: "doc.text.magnifyingglass")
+            }
+            .accessibilityLabel(String(localized: "Export Analysis Diagnostics", bundle: AppLanguage.current.bundle))
+            .accessibilityIdentifier("review.exportDiagnostics")
+            .disabled(isBusy)
             AnalysisRetryButton(size: 36, action: onRetry)
                 .disabled(isBusy)
                 .accessibilityIdentifier("review.retry")
@@ -605,6 +629,14 @@ struct ReviewView: View {
             }
         }
     }
+}
+
+private struct AnalysisDiagnosticDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+    init(data: Data) { self.data = data }
+    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
 
 private struct IndexedCandidate: Identifiable {

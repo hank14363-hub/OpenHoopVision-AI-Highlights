@@ -4039,24 +4039,68 @@
         }
       }
     },
-    "Visual candidates require a ball above the rim, an in-basket target at the rim, and a ball below it in a continuous downward path. Appearance-only and ball-only detections are excluded. Stable score changes can still add candidates for timing review. Occluded or distant baskets may be missed; add them manually when needed.": {
+    "Complete ball motion provides stronger evidence. A partial ball path or a brief strong in-basket signal can recover a candidate for review without requiring all three detections. One-frame and two-frame flashes and prolonged static signals are excluded. Recovered candidates start unchecked. Use Export Analysis Diagnostics on the review screen if results are empty or excessive.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Visual candidates require a ball above the rim, an in-basket target at the rim, and a ball below it in a continuous downward path. Appearance-only and ball-only detections are excluded. Stable score changes can still add candidates for timing review. Occluded or distant baskets may be missed; add them manually when needed."
+            "value": "Complete ball motion provides stronger evidence. A partial ball path or a brief strong in-basket signal can recover a candidate for review without requiring all three detections. One-frame and two-frame flashes and prolonged static signals are excluded. Recovered candidates start unchecked. Use Export Analysis Diagnostics on the review screen if results are empty or excessive."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "只有连续观察到篮球在筐上、入网目标在筐口、篮球落到筐下，才生成画面候选。仅有疑似入网外观或普通篮球轨迹不会列入。稳定比分变化仍可补充候选，需要核对时点。遮挡或远景可能漏检，可手动添加。"
+            "value": "完整篮球轨迹提供较强证据；只看到部分轨迹，或出现短暂且较强的连续入网信号时，也可补回候选供复核，无需三处全部识别。单帧、两帧闪烁和长时间静止信号会过滤。补回候选默认不勾选。结果为空或过多时，可在复核页导出分析诊断。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "只有連續觀察到籃球在框上、入網目標在框口、籃球落到框下，才產生畫面候選。僅有疑似入網外觀或普通籃球軌跡不會列入。穩定比分變化仍可補充候選，需要核對時點。遮擋或遠景可能漏檢，可手動加入。"
+            "value": "完整籃球軌跡提供較強證據；只看到部分軌跡，或出現短暫且較強的連續入網訊號時，也可補回候選供複核，無需三處全部辨識。單幀、兩幀閃爍和長時間靜止訊號會過濾。補回候選預設不勾選。結果為空或過多時，可在複核頁匯出分析診斷。"
+          }
+        }
+      }
+    },
+    "Export Analysis Diagnostics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Analysis Diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出分析诊断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "匯出分析診斷"
+          }
+        }
+      }
+    },
+    "Unable to Export Diagnostics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to Export Diagnostics"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导出诊断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法匯出診斷"
           }
         }
       }

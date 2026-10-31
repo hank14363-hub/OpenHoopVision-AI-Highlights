@@ -40,7 +40,7 @@ struct SettingsView: View {
                 ), unit: String(localized: "s", bundle: AppLanguage.current.bundle), range: 0...30, fractionDigits: 1, accessibilityID: "settings.clipLeadOut")
                 rowDivider
                 DisclosureGroup {
-                    Text(String(localized: "Visual candidates require a ball above the rim, an in-basket target at the rim, and a ball below it in a continuous downward path. Appearance-only and ball-only detections are excluded. Stable score changes can still add candidates for timing review. Occluded or distant baskets may be missed; add them manually when needed.", bundle: AppLanguage.current.bundle))
+                    Text(String(localized: "Complete ball motion provides stronger evidence. A partial ball path or a brief strong in-basket signal can recover a candidate for review without requiring all three detections. One-frame and two-frame flashes and prolonged static signals are excluded. Recovered candidates start unchecked. Use Export Analysis Diagnostics on the review screen if results are empty or excessive.", bundle: AppLanguage.current.bundle))
                         .font(.system(size: 12)).foregroundStyle(Color.hoopMuted).padding(.bottom, 14)
                 } label: {
                     HStack(spacing: 10) {

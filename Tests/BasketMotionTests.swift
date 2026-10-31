@@ -58,7 +58,7 @@ struct BasketMotionTests {
         let appearance = events([0, 0])
         expect(appearance.isEmpty, "two target frames without ball passage are discarded")
         let stationary = events(Array(repeating: 0, count: 12))
-        expect(stationary.isEmpty, "stationary target never enters review list")
+        expect(stationary.count == 1 && stationary[0].requiresReview, "brief strong target pulse can be reviewed without ordinary ball detections")
         let prolonged = events(Array(repeating: 0, count: 90))
         expect(prolonged.isEmpty, "persistent target discarded")
         let upward = events([0.6, 0, -0.6])
@@ -72,7 +72,7 @@ struct BasketMotionTests {
         expect(events([-0.6, 0, 0.6], classes: [0, 2, 0]).first?.requiresReview == false, "single target frame recovers brief passage")
         expect(events([-0.6, 0, 0.6], classes: [0, 0, 0]).isEmpty, "ball-only passage does not enter review list")
         expect(events([-0.6, 0, 0.6], times: [0, 0.3, 0.6]).isEmpty, "long gaps cannot connect a trajectory")
-        expect(events([-0.6, 0, 0.6], classes: [0, 2, 0], shifts: [0, 0.3, 0.3]).isEmpty, "cut to another rim breaks passage")
+        expect(events([-0.6, 0, 0.6], classes: [0, 2, 0], shifts: [0, 0.3, 0.3]).allSatisfy({ $0.requiresReview }), "cut to another rim cannot fabricate a complete passage")
         expect(events([-0.6, 0, 0.6], times: [0, 0, 0]).isEmpty, "repeated timestamp is not a trajectory")
         let pan = events([-0.6, 0, 0.6], classes: [0, 2, 0], shifts: [0, 0.01, 0.02])
         expect(pan.count == 1 && !pan[0].requiresReview, "small camera pan uses rim-relative coordinates")
@@ -103,8 +103,8 @@ struct BasketMotionTests {
         }
         expect(noScore.candidates(visualEvents: appearance).first?.isScoreboard == true, "stable score increase still generates scoreboard candidate")
         expect(events([-0.6, 0, 0.6]).isEmpty, "moving class-2 boxes alone cannot fake a basketball trajectory")
-        expect(events([-0.6, 0, 0.6], classes: [2, 2, 0]).isEmpty, "ordinary ball above rim required")
-        expect(events([-0.6, 0, 0.6], classes: [0, 2, 2]).isEmpty, "ordinary ball below rim required")
+        expect(events([-0.6, 0, 0.6], classes: [2, 2, 0]).first?.requiresReview == true, "missing ordinary ball above can recover for review")
+        expect(events([-0.6, 0, 0.6], classes: [0, 2, 2]).first?.requiresReview == true, "missing ordinary ball below can recover for review")
         expect(events([0.6, 0, -0.6], classes: [0, 2, 0]).isEmpty, "real-ball upward bounce rejected")
         expect(events([-0.6, 0, 0.6], xs: [0.8, 0.8, 0.8], classes: [0, 2, 0]).isEmpty, "off-rim real-ball descent rejected")
         expect(events([-0.6, 0, 0.6], xs: [-0.8, 0, 0.65], classes: [0, 2, 0]).isEmpty, "cross-ball lateral jump rejected")
@@ -121,7 +121,7 @@ struct BasketMotionTests {
         }
         expect(skinny.finish().isEmpty, "tiny elongated specks cannot bracket a goal")
         var unrelatedTarget = BasketMotionFilter(threshold: 0.55)
-        for i in 0..<3 { unrelatedTarget.append(time: Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], x: i == 1 ? 0.4 : 0, cls: i == 1 ? 2 : 0)) }
+        for i in 0..<3 { unrelatedTarget.append(time: Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], x: i == 1 ? 0.7 : 0, cls: i == 1 ? 2 : 0)) }
         expect(unrelatedTarget.finish().isEmpty, "target away from interpolated ball path rejected")
 
         // Reproduce the review-list flood with repeated intermittent appearances.
@@ -146,6 +146,55 @@ struct BasketMotionTests {
             for i in 0..<3 { multiple.append(time: base + Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], cls: i == 1 ? 2 : 0)) }
         }
         expect(multiple.currentEvents.count == 2 && multiple.finish().count == 2, "live and final preserve separate supported baskets")
+        let approach = events([-0.6, 0], classes: [0, 2])
+        expect(approach.count == 1 && approach[0].requiresReview, "approach-only evidence recovers candidate without requiring exit frame")
+        let exit = events([0, 0.6], classes: [2, 0])
+        expect(exit.count == 1 && exit[0].requiresReview, "exit-only evidence recovers candidate without requiring approach frame")
+        let classChanges = events([-0.6, -0.2, 0.2, 0.6])
+        expect(classChanges.count == 1 && classChanges[0].requiresReview, "four-frame class-2 pulse survives missing ordinary class labels")
+        var rimDropout = BasketMotionFilter(threshold: 0.55)
+        for i in 0..<5 {
+            let objects: [BasketballObject]
+            if i % 2 == 1 { objects = [] }
+            else { objects = scene([-0.6, 0, 0.6][i / 2], cls: i == 2 ? 2 : 0) }
+            rimDropout.append(time: Double(i) / 30, objects: objects)
+        }
+        expect(rimDropout.finish().count == 1 && rimDropout.finish()[0].requiresReview == false, "brief rim dropouts preserve full trajectory")
+        expect(continuous.evidenceCounts["fullMotion"] == 1, "evidence summary reports full motion")
+        var pulseFilter = BasketMotionFilter(threshold: 0.55)
+        for i in 0..<4 { pulseFilter.append(time: Double(i) / 30, objects: scene(0)) }
+        expect(pulseFilter.finish().count == 1 && pulseFilter.evidenceCounts["strongAppearance"] == 1, "finalization retains and labels strong appearance recovery")
+        expect(pulseFilter.finish().count == 1, "pulse finish idempotent")
+        var sparsePulse = BasketMotionFilter(threshold: 0.55, frameRate: 30)
+        for i in 0..<4 { sparsePulse.append(time: Double(i) * 0.29, objects: scene(0)) }
+        expect(sparsePulse.finish().isEmpty, "sparse intermittent hits cannot masquerade as a continuous pulse")
+        var flicker = BasketMotionFilter(threshold: 0.55)
+        for i in 0..<120 { flicker.append(time: Double(i) / 30, objects: i % 9 < 4 ? scene(0) : []) }
+        expect(flicker.finish().isEmpty, "repeated short gaps in persistent background do not split into goals")
+        var lowPeak = BasketMotionFilter(threshold: 0.55)
+        for i in 0..<6 {
+            let values = scene(0).map { item in box(item.classID, item.x1, item.y1, item.width, item.height, 0.60) }
+            lowPeak.append(time: Double(i) / 30, objects: values)
+        }
+        expect(lowPeak.finish().isEmpty, "appearance recovery requires a strong peak instead of merely meeting threshold")
+        var moderatePulse = BasketMotionFilter(threshold: 0.55)
+        for (index, score) in [0.70, 0.67, 0.66, 0.68].enumerated() {
+            let objects = scene(0).map { box($0.classID, $0.x1, $0.y1, $0.width, $0.height, score) }
+            moderatePulse.append(time: Double(index) / 30, objects: objects)
+        }
+        expect(moderatePulse.finish().count == 1 && moderatePulse.finish()[0].requiresReview, "moderately strong pulse recovers without an arbitrary 75 percent floor")
+        var diag = BasketAnalysisDiagnostics()
+        diag.append(time: 0, objects: scene(0), threshold: 0.55, imageAspectRatio: 1)
+        diag.append(time: 0.1, objects: scene(-0.6, cls: 0), threshold: 0.55, imageAspectRatio: 1)
+        diag.append(time: 10, objects: [], threshold: 0.55, imageAspectRatio: 1)
+        expect(diag.processedFrames == 3 && diag.framesWithBall == 1 && diag.framesWithRim == 2, "diagnostics count actual model object coverage")
+        expect(diag.framesWithTarget == 1 && diag.framesAtThreshold == 1, "diagnostics distinguish target presence and usable confidence")
+        expect(diag.sampleFrames.count == 2 && diag.sampleFrames[0].targetConfidence == 0.9, "diagnostics retain representative high-target frame per ten seconds")
+        expect(diag.targetConfidenceHistogram.reduce(0, +) == 3, "confidence histogram accounts for all frames including no target")
+        diag.evidenceCounts = pulseFilter.evidenceCounts
+        let diagnosticData = try! JSONEncoder().encode(diag)
+        let decodedDiagnostics = try! JSONDecoder().decode(BasketAnalysisDiagnostics.self, from: diagnosticData)
+        expect(decodedDiagnostics.evidenceCounts["strongAppearance"] == 1 && decodedDiagnostics.sampleFrames[0].objects.count == 2, "diagnostic JSON preserves evidence and boxes")
         print("Passed \(checks) motion and coordinate checks.")
     }
 }

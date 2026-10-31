@@ -237,8 +237,14 @@ actor VideoAnalysisService {
         let imageAspectRatio = scan.metadata.map { Double($0.height) / Double($0.width) } ?? 1
         var motionFilter = BasketMotionFilter(threshold: threshold, frameRate: scan.frameRate,
                                               imageAspectRatio: imageAspectRatio)
-        for hit in scan.scores { motionFilter.append(time: hit.time, objects: hit.objects ?? []) }
+        var diagnostics = BasketAnalysisDiagnostics()
+        for hit in scan.scores {
+            let objects = hit.objects ?? []
+            motionFilter.append(time: hit.time, objects: objects)
+            diagnostics.append(time: hit.time, objects: objects, threshold: threshold, imageAspectRatio: imageAspectRatio)
+        }
         let visualEvents = motionFilter.finish()
+        diagnostics.evidenceCounts = motionFilter.evidenceCounts
         return VideoAnalysisResult(
             duration: scan.duration,
             candidates: scoreFilter.candidates(visualEvents: visualEvents).map { event in
@@ -247,7 +253,7 @@ actor VideoAnalysisService {
                               origin: event.isScoreboard ? .scoreboard : (event.requiresReview ? .visualReview : nil))
             },
             processedFrames: scan.scores.count, highestConfidence: scan.highestConfidence,
-            confidenceThreshold: threshold, metadata: scan.metadata
+            confidenceThreshold: threshold, metadata: scan.metadata, diagnostics: diagnostics
         )
     }
 
