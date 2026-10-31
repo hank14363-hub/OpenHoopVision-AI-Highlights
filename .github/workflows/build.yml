@@ -12,53 +12,69 @@ jobs:
         with:
           lfs: true
 
-      - name: Select Latest Xcode
+      - name: Select latest Xcode
+        shell: bash
         run: |
-          LATEST_XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
-          sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+          set -euo pipefail
+          LATEST_XCODE="$(find /Applications -name 'Xcode*.app' -prune -print | sort -V | tail -n 1)"
+          test -n "$LATEST_XCODE"
+          sudo xcode-select --switch "$LATEST_XCODE/Contents/Developer"
           xcodebuild -version
 
-      - name: Auto-Patch Source Code & Simplify ReviewView
+      - name: Validate source changes
+        shell: bash
         run: |
-          python3 -c '
-          import glob, re
+          set -euo pipefail
+          test -f "AI Highlights.xcodeproj/project.pbxproj"
+          REVIEW_VIEWS="$(find . -name ReviewView.swift -type f -print)"
+          test -n "$REVIEW_VIEWS"
+          printf '%s\n' "$REVIEW_VIEWS"
 
-          # 1. 统一调高最低部署版本
-          for p in glob.glob("**/*.pbxproj", recursive=True):
-              txt = open(p, encoding="utf-8").read()
-              txt = re.sub(r"IPHONEOS_DEPLOYMENT_TARGET = [0-9.]+;", "IPHONEOS_DEPLOYMENT_TARGET = 18.0;", txt)
-              open(p, "w", encoding="utf-8").write(txt)
-
-          # 2. 为 VideoCompositionService 补齐 @available
-          for p in glob.glob("**/VideoCompositionService.swift", recursive=True):
-              txt = open(p, encoding="utf-8").read()
-              if "@available" not in txt:
-                  txt = txt.replace("actor VideoCompositionService", "@available(iOS 18.0, *)\nactor VideoCompositionService")
-                  open(p, "w", encoding="utf-8").write(txt)
-
-          # 3. 针对 ReviewView.swift 第 35 行复杂的 body 表达式进行简化或加上显式类型声明
-          for p in glob.glob("**/ReviewView.swift", recursive=True):
-              txt = open(p, encoding="utf-8").read()
-              # 如果检测到超长表达式，通过引入临时变量或分拆来降低编译器负担
-              # 此处为通用的表达式类型标注与拆分预处理
-              print("Found ReviewView at:", p)
-          '
-
-      - name: Build Xcode Project
+      - name: Build Xcode project
+        shell: bash
         run: |
-          xcodebuild -project "AI Highlights.xcodeproj" -scheme "AI Highlights" -configuration Debug -sdk iphoneos -derivedDataPath build IPHONEOS_DEPLOYMENT_TARGET=18.0 DEVELOPMENT_TEAM="" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO PROVISIONING_PROFILE_SPECIFIER="" SWIFT_OPTIMIZATION_LEVEL="-Onone" OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -solver-expression-time-threshold=999999' build > build.log 2>&1 || (grep -n -C 5 "error:" build.log && exit 1)
+          set -o pipefail
+          xcodebuild \
+            -project "AI Highlights.xcodeproj" \
+            -scheme "AI Highlights" \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            IPHONEOS_DEPLOYMENT_TARGET=18.0 \
+            DEVELOPMENT_TEAM= \
+            CODE_SIGN_IDENTITY= \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            PROVISIONING_PROFILE_SPECIFIER= \
+            SWIFT_OPTIMIZATION_LEVEL=-Onone \
+            build 2>&1 | tee build.log
 
-      - name: Verify and Package IPA
+      - name: Show compiler diagnostics on failure
+        if: failure()
+        shell: bash
         run: |
-          mkdir -p Payload
-          APP_PATH=$(find build/Build/Products -name "*.app" -type d | head -n 1)
-          echo "Using App Path: $APP_PATH"
+          if grep -n -E 'error:|fatal error:' build.log; then
+            exit 1
+          fi
+          tail -n 200 build.log
+          exit 1
+
+      - name: Verify and package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/Build/Products -type d -name '*.app' -print | head -n 1)"
+          test -n "$APP_PATH"
           test -f "$APP_PATH/Info.plist"
-          cp -r "$APP_PATH" Payload/
-          zip -r AI_Highlights_Unsigned.ipa Payload
+          rm -rf Payload AI_Highlights_Unsigned.ipa
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          ditto -c -k --sequesterRsrc --keepParent Payload AI_Highlights_Unsigned.ipa
+          unzip -l AI_Highlights_Unsigned.ipa | head -n 20
 
-      - name: Upload IPA Artifact
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
           name: Unsigned-IPA
           path: AI_Highlights_Unsigned.ipa
+          if-no-files-found: error
