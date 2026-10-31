@@ -50,7 +50,11 @@ final class AnalysisExecutionPolicy: @unchecked Sendable {
 @MainActor
 final class AnalysisBackgroundController {
     static let shared = AnalysisBackgroundController()
-    private let identifierPrefix = "com.openhoopvision.aihighlights.analysis."
+    // Signing tools can change the bundle identifier. Continued-processing IDs
+    // must use the installed app's namespace, not the original repository's ID.
+    private var identifierPrefix: String {
+        (Bundle.main.bundleIdentifier ?? "com.openhoopvision.aihighlights") + ".analysis."
+    }
     private var requestID: String?
     private var task: BGTask?
     private var legacyTask: UIBackgroundTaskIdentifier = .invalid
@@ -61,23 +65,50 @@ final class AnalysisBackgroundController {
         guard requestID == nil else { return }
         self.onStart = onStart
         self.onExpiration = onExpiration
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, *), permitsContinuedProcessing {
             let id = identifierPrefix + UUID().uuidString
             let registered = BGTaskScheduler.shared.register(forTaskWithIdentifier: id, using: nil) { [weak self] task in
                 Task { @MainActor in self?.accept(task) }
             }
-            guard registered else { throw BackgroundAnalysisError.registrationFailed }
+            guard registered else {
+                NSLog("Background analysis registration failed; starting foreground-compatible analysis.")
+                beginLegacySession()
+                return
+            }
             requestID = id
             let request = BGContinuedProcessingTaskRequest(identifier: id, title: String(localized: "Analyzing Game Video", bundle: AppLanguage.current.bundle), subtitle: String(localized: "Preparing to find shots", bundle: AppLanguage.current.bundle))
             do { try BGTaskScheduler.shared.submit(request) }
-            catch { requestID = nil; throw error }
-        } else {
-            requestID = identifierPrefix + UUID().uuidString
-            legacyTask = UIApplication.shared.beginBackgroundTask(withName: String(localized: "Game video analysis", bundle: AppLanguage.current.bundle)) { [weak self] in
-                Task { @MainActor in self?.onExpiration?(); self?.finish(success: false) }
+            catch {
+                BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: id)
+                requestID = nil
+                NSLog("Background analysis submission failed; starting foreground-compatible analysis: %@", error.localizedDescription)
+                beginLegacySession()
             }
-            onStart()
+        } else {
+            beginLegacySession()
         }
+    }
+
+    private var permitsContinuedProcessing: Bool {
+        // A re-signed app may still contain the original app's permitted IDs.
+        // Skip registration in that case; foreground inference can still run.
+        let permitted = Bundle.main.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String] ?? []
+        return permitted.contains(identifierPrefix + "*")
+    }
+
+    private func beginLegacySession() {
+        let id = identifierPrefix + UUID().uuidString
+        requestID = id
+        legacyTask = UIApplication.shared.beginBackgroundTask(withName: String(localized: "Game video analysis", bundle: AppLanguage.current.bundle)) { [weak self] in
+            Task { @MainActor in
+                guard let self, self.requestID == id else { return }
+                self.onExpiration?()
+                self.finish(success: false)
+            }
+        }
+        // Even if the OS denies extra background time, foreground analysis must
+        // start. Expiration of an accepted task keeps the existing pause/checkpoint flow.
+        onStart?()
     }
 
     private func accept(_ task: BGTask) {
@@ -116,7 +147,3 @@ final class AnalysisBackgroundController {
     }
 }
 
-private enum BackgroundAnalysisError: LocalizedError {
-    case registrationFailed
-    var errorDescription: String? { String(localized: "Unable to register background analysis. Reopen the app and try again.", bundle: AppLanguage.current.bundle) }
-}
