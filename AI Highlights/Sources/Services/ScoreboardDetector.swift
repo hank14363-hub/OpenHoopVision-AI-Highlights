@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreImage
 import Foundation
 import Vision
 
@@ -50,24 +51,28 @@ final class ScoreboardDetector {
                               height: max(1, CGFloat(band.height) - cropY)).integral
         guard let board = band.cropping(to: cropRect),
               let enlarged = enlarged(board, scale: 4) else { return nil }
-        do { try VNImageRequestHandler(cgImage: enlarged, orientation: .up).perform([enhancedRequest]) }
-        catch { return nil }
-        let enhancedSource = tokens(from: enhancedRequest.results)
-        let bandWidth = Double(band.width)
-        let bandHeight = Double(band.height)
-        let cropMinX = Double(cropRect.minX)
-        let cropMinY = Double(cropRect.minY)
-        let cropWidth = Double(cropRect.width)
-        let cropHeight = Double(cropRect.height)
-        let enhanced = enhancedSource.map { token -> ScoreboardParser.Token in
-            let x = (cropMinX + token.x * cropWidth) / bandWidth
-            let y = (cropMinY + token.y * cropHeight) / bandHeight
-            let width = token.width * cropWidth / bandWidth
-            let height = token.height * cropHeight / bandHeight
-            return ScoreboardParser.Token(text: token.text, confidence: token.confidence,
-                                          x: x, y: y, width: width, height: height)
+        let variants = [enlarged, adjusted(enlarged, brightness: 0.18, contrast: 1.8)].compactMap { $0 }
+        for variant in variants {
+            do { try VNImageRequestHandler(cgImage: variant, orientation: .up).perform([enhancedRequest]) }
+            catch { continue }
+            let enhancedSource = tokens(from: enhancedRequest.results)
+            let bandWidth = Double(band.width)
+            let bandHeight = Double(band.height)
+            let cropMinX = Double(cropRect.minX)
+            let cropMinY = Double(cropRect.minY)
+            let cropWidth = Double(cropRect.width)
+            let cropHeight = Double(cropRect.height)
+            let enhanced = enhancedSource.map { token -> ScoreboardParser.Token in
+                let x = (cropMinX + token.x * cropWidth) / bandWidth
+                let y = (cropMinY + token.y * cropHeight) / bandHeight
+                let width = token.width * cropWidth / bandWidth
+                let height = token.height * cropHeight / bandHeight
+                return ScoreboardParser.Token(text: token.text, confidence: token.confidence,
+                                              x: x, y: y, width: width, height: height)
+            }
+            if let reading = ScoreboardParser.reading(from: enhanced) { return reading }
         }
-        return ScoreboardParser.reading(from: enhanced)
+        return nil
     }
 
     private func tokens(from observations: [VNRecognizedTextObservation]?) -> [ScoreboardParser.Token] {
@@ -89,5 +94,14 @@ final class ScoreboardDetector {
         context.interpolationQuality = .high
         context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return context.makeImage()
+    }
+
+    private func adjusted(_ image: CGImage, brightness: Double, contrast: Double) -> CGImage? {
+        let source = CIImage(cgImage: image).applyingFilter("CIColorControls", parameters: [
+            kCIInputBrightnessKey: brightness,
+            kCIInputContrastKey: contrast,
+            kCIInputSaturationKey: 0.2
+        ])
+        return CIContext(options: [.cacheIntermediates: false]).createCGImage(source, from: source.extent)
     }
 }
