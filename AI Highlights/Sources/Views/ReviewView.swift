@@ -31,35 +31,65 @@ struct ReviewView: View {
     private var isBusy: Bool { isGenerating || isDownloading }
 
     var body: some View {
-        reviewScreen
-        .hoopScreen()
-        .navigationTitle(String(localized: "High Moments", bundle: AppLanguage.current.bundle))
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(isBusy)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                AnalysisRetryButton(size: 36, action: onRetry)
-                    .disabled(isBusy)
-                    .accessibilityIdentifier("review.retry")
+        reviewPage
+    }
+
+    private var reviewPage: some View {
+        observedReviewPage
+            .alert(errorTitle, isPresented: isErrorPresented) {
+                Button(String(localized: "OK", bundle: AppLanguage.current.bundle), role: .cancel) {
+                    errorMessage = nil
+                }
+            } message: {
+                Text(errorMessage ?? String(localized: "Please try again.", bundle: AppLanguage.current.bundle))
             }
+    }
+
+    private var observedReviewPage: some View {
+        navigationReviewPage
+            .onDisappear(perform: stopPlaybackAndTasks)
+            .onReceive(player.publisher(for: \.timeControlStatus).receive(on: DispatchQueue.main)) { (status: AVPlayer.TimeControlStatus) in
+                isPlayerPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
+            }
+            .onChange(of: filter) { _, _ in revealedClipRow = nil }
+            .onChange(of: sort) { _, _ in revealedClipRow = nil }
+    }
+
+    private var navigationReviewPage: some View {
+        AnyView(reviewScreen)
+            .hoopScreen()
+            .navigationTitle(String(localized: "High Moments", bundle: AppLanguage.current.bundle))
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(isBusy)
+            .toolbar { retryToolbar }
+    }
+
+    @ToolbarContentBuilder
+    private var retryToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            AnalysisRetryButton(size: 36, action: onRetry)
+                .disabled(isBusy)
+                .accessibilityIdentifier("review.retry")
         }
-        .onDisappear {
-            player.pause()
-            isPlayerPlaying = false
-            player.replaceCurrentItem(with: nil)
-            playbackTask?.cancel()
-            generationTask?.cancel()
-            downloadTask?.cancel()
-            manualFeedbackTask?.cancel()
-        }
-        .onReceive(player.publisher(for: \.timeControlStatus).receive(on: DispatchQueue.main)) { status in
-            isPlayerPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
-        }
-        .onChange(of: filter) { _, _ in revealedClipRow = nil }
-        .onChange(of: sort) { _, _ in revealedClipRow = nil }
-        .alert(errorTitle, isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
-            Button(String(localized: "OK", bundle: AppLanguage.current.bundle), role: .cancel) { errorMessage = nil }
-        } message: { Text(errorMessage ?? String(localized: "Please try again.", bundle: AppLanguage.current.bundle)) }
+    }
+
+    private var isErrorPresented: Binding<Bool> {
+        Binding<Bool>(
+            get: { errorMessage != nil },
+            set: { isPresented in
+                if !isPresented { errorMessage = nil }
+            }
+        )
+    }
+
+    private func stopPlaybackAndTasks() {
+        player.pause()
+        isPlayerPlaying = false
+        player.replaceCurrentItem(with: nil)
+        playbackTask?.cancel()
+        generationTask?.cancel()
+        downloadTask?.cancel()
+        manualFeedbackTask?.cancel()
     }
 
     @ViewBuilder
