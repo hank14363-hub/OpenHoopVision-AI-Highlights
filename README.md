@@ -25,6 +25,7 @@
 
 - **On-device scoring candidates:** use the bundled Core ML model to flag potential made baskets with confidence scores for review.
 - **Broadcast score support:** sparse, on-device Vision OCR can supplement distant shots when a labelled score strip is visible in the lower 30% of the video. Stable single-team increases of 1–3 points become candidates labelled for timing review. These use at least 8 seconds of lead-in and 3 seconds of lead-out because score graphics may update late; OCR-only candidates do not have a model confidence percentage.
+- **Low-resolution overlays:** when `HOME` and `GUEST` are stacked above the scores, the app retries OCR on an enlarged scoreboard crop. It also retries Core ML around detected rims instead of relying on fixed court coordinates.
 - **Adjustable, human-reviewed results:** tune detection and review thresholds, inspect uncertain candidates, and add or remove moments manually.
 - **Flexible highlight creation:** adjust clip lead-in and lead-out, merge overlapping selections in source-video order, retain available source audio, and export an MP4.
 

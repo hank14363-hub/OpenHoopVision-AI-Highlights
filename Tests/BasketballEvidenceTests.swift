@@ -47,6 +47,16 @@ struct BasketballEvidenceTests {
         expect(ScoreboardParser.reading(from: scoreTokens("999-0")) == nil, "out-of-range score ignored")
         expect(ScoreboardParser.reading(from: [token("Home", x: 0.1), token("2-0", x: 0.4, confidence: 0.2), token("Away", x: 0.65)]) == nil, "low confidence OCR ignored")
         expect(ScoreboardParser.reading(from: scoreTokens("2-0") + [token("4-1", x: 0.45)]) == nil, "conflicting strips rejected")
+        let vertical = [token("HOME", x: 0.35, width: 0.10, y: 0.20),
+                        token("GUEST", x: 0.70, width: 0.12, y: 0.20),
+                        token("2", x: 0.43, width: 0.04, y: 0.55),
+                        token("1", x: 0.56, width: 0.04, y: 0.55)]
+        expect(ScoreboardParser.reading(from: vertical)?.left == 2, "vertical HOME/GUEST labels supported")
+        expect(ScoreboardParser.reading(from: vertical)?.right == 1, "vertical score pair supported")
+        let clock = [token("HOME", x: 0.35, width: 0.10, y: 0.20),
+                     token("GUEST", x: 0.70, width: 0.12, y: 0.20),
+                     token("5:25", x: 0.43, width: 0.14, y: 0.55)]
+        expect(ScoreboardParser.reading(from: clock) == nil, "vertical game clock is not a score")
 
         var filter = ScoreChangeFilter()
         stable(&filter, 0, 0)

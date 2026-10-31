@@ -82,6 +82,35 @@ final class CoreMLBasketballDetector {
     }
 
     func ballInBasketConfidence(in image: CGImage) throws -> Double {
+        let fullObjects = try objects(in: image)
+        var best = BasketSpatialGate.confidence(in: fullObjects)
+        guard best < 0.70 else { return best }
+
+        // The supplied recording is 640×360. At the full-frame 1280×736 input,
+        // its rim is often only a few dozen pixels. Re-run around up to two
+        // detected rims so the model sees the target at a useful scale. This is
+        // adaptive to camera cuts and pans; fixed court coordinates are unsafe.
+        let imageWidth = CGFloat(image.width)
+        let imageHeight = CGFloat(image.height)
+        let rims = fullObjects.filter { $0.classID == 1 && $0.isValid }
+            .sorted { $0.confidence > $1.confidence }.prefix(2)
+        for rim in rims {
+            let x = CGFloat(rim.x1 / Double(BasketballModel.inputWidth)) * imageWidth
+            let y = CGFloat(rim.y1 / Double(BasketballModel.inputHeight)) * imageHeight
+            let width = CGFloat(rim.width / Double(BasketballModel.inputWidth)) * imageWidth
+            let height = CGFloat(rim.height / Double(BasketballModel.inputHeight)) * imageHeight
+            let side = max(width * 6, max(height * 8, min(imageWidth, imageHeight) * 0.28))
+            let crop = CGRect(x: x + width / 2 - side / 2, y: y + height / 2 - side / 2,
+                              width: side, height: side).intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight)).integral
+            guard crop.width >= 24, crop.height >= 24, let cropped = image.cropping(to: crop) else { continue }
+            best = max(best, BasketSpatialGate.confidence(in: try objects(in: cropped)))
+        }
+        return best
+    }
+
+    var inputDimensions: [Int] { [1, 3, BasketballModel.inputHeight, BasketballModel.inputWidth] }
+
+    private func objects(in image: CGImage) throws -> [BasketballObject] {
         do {
             try VNImageRequestHandler(cgImage: image, orientation: .up).perform([request])
         } catch {
@@ -91,12 +120,10 @@ final class CoreMLBasketballDetector {
               let output = observations.lazy.compactMap({ $0.featureValue.multiArrayValue }).first else {
             throw DetectorError.unsupportedOutput
         }
-        return try Self.spatiallySupportedConfidence(in: output)
+        return try Self.objects(from: output)
     }
 
-    var inputDimensions: [Int] { [1, 3, BasketballModel.inputHeight, BasketballModel.inputWidth] }
-
-    private static func spatiallySupportedConfidence(in output: MLMultiArray) throws -> Double {
+    private static func objects(from output: MLMultiArray) throws -> [BasketballObject] {
         let shape = output.shape.map(\.intValue)
         let strides = output.strides.map(\.intValue)
         guard shape == [1, detectionCount, valuesPerDetection], strides.count == 3 else {
@@ -118,7 +145,7 @@ final class CoreMLBasketballDetector {
                 x2: Double(scalar(output, batch: 0, row: row, field: 2, strides: strides)),
                 y2: Double(scalar(output, batch: 0, row: row, field: 3, strides: strides))))
         }
-        return BasketSpatialGate.confidence(in: objects)
+        return objects
     }
 
     private static func scalar(_ array: MLMultiArray, batch: Int, row: Int, field: Int, strides: [Int]) -> Float {

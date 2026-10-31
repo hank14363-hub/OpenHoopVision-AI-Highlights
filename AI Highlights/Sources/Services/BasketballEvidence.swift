@@ -70,6 +70,18 @@ enum ScoreboardParser {
         var midY: Double { y + height / 2 }
     }
 
+    /// Some gym overlays put HOME/GUEST above the two scores instead of placing
+    /// team labels on either side. A token is accepted only when both labels are
+    /// horizontally aligned with each other and the score pair sits below them.
+    private static func hasVerticalLabels(around score: Token, in tokens: [Token]) -> Bool {
+        let labels = tokens.filter { isLabel($0.text) }
+        guard let home = labels.min(by: { $0.midX < $1.midX }),
+              let guest = labels.max(by: { $0.midX < $1.midX }), home.midX < guest.midX,
+              abs(home.midY - guest.midY) < max(home.height, guest.height) * 1.4 else { return false }
+        return score.midY > max(home.midY, guest.midY) &&
+            score.x >= home.x - score.width && score.x + score.width <= guest.x + guest.width
+    }
+
     private static let pairPattern = #"(?<![0-9])([0-9]{1,3})\s*[-–—·•]\s*([0-9]{1,3})(?![0-9])"#
 
     static func reading(from tokens: [Token]) -> ScoreboardReading? {
@@ -87,7 +99,7 @@ enum ScoreboardParser {
                 let prefix = text.substring(to: match.range.location)
                 let suffix = text.substring(from: NSMaxRange(match.range))
                 let inlineLabels = isLabel(prefix) && isLabel(suffix)
-                guard inlineLabels || hasLabels(around: token, in: valid) else { continue }
+                guard inlineLabels || hasLabels(around: token, in: valid) || hasVerticalLabels(around: token, in: valid) else { continue }
                 readings.append(ScoreboardReading(left: left, right: right, centerX: token.midX,
                                                   centerY: token.midY, confidence: token.confidence))
             }
@@ -102,7 +114,7 @@ enum ScoreboardParser {
                 let pair = Token(text: "", confidence: min(left.confidence, right.confidence), x: left.x,
                                  y: min(left.y, right.y), width: right.x + right.width - left.x,
                                  height: max(left.height, right.height))
-                guard hasLabels(around: pair, in: valid) else { continue }
+                guard hasLabels(around: pair, in: valid) || hasVerticalLabels(around: pair, in: valid) else { continue }
                 readings.append(ScoreboardReading(left: l, right: r, centerX: pair.midX,
                                                   centerY: pair.midY, confidence: pair.confidence))
             }
