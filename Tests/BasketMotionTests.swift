@@ -52,40 +52,40 @@ struct BasketMotionTests {
         let encoded = try! JSONEncoder().encode([a])
         expect(try! JSONDecoder().decode([BasketballObject].self, from: encoded).first?.x1 == a.x1, "object evidence persists for resume")
 
-        let descent = events([-0.6, 0, 0.6])
+        let descent = events([-0.6, 0, 0.6], classes: [0, 2, 0])
         expect(descent.count == 1 && !descent[0].requiresReview, "ordered downward passage corroborates target")
         expect(near(descent[0].time, 1.0 / 30), "event anchored at rim passage")
         let appearance = events([0, 0])
-        expect(appearance.count == 1 && appearance[0].requiresReview, "two target frames alone require review")
+        expect(appearance.isEmpty, "two target frames without ball passage are discarded")
         let stationary = events(Array(repeating: 0, count: 12))
-        expect(stationary.count == 1 && stationary[0].requiresReview, "stationary target never confirms passage")
+        expect(stationary.isEmpty, "stationary target never enters review list")
         let prolonged = events(Array(repeating: 0, count: 90))
         expect(prolonged.isEmpty, "persistent target discarded")
         let upward = events([0.6, 0, -0.6])
-        expect(upward.count == 1 && upward[0].requiresReview, "upward motion cannot confirm basket")
+        expect(upward.isEmpty, "upward motion is discarded")
         let absentAbove = events([0, 0.3, 0.6])
-        expect(absentAbove.count == 1 && absentAbove[0].requiresReview, "below-only fall cannot confirm basket")
+        expect(absentAbove.isEmpty, "below-only fall is discarded")
         let side = events([-0.6, 0, 0.6], xs: [0.8, 0.8, 0.8])
-        expect(side.count == 1 && side[0].requiresReview, "descent outside rim is unconfirmed")
+        expect(side.isEmpty, "descent outside rim is discarded")
         let jump = events([-0.6, 0, 0.6], xs: [-0.8, 0, 0.65])
-        expect(jump.count == 1 && jump[0].requiresReview, "unrelated lateral ball jump rejected")
+        expect(jump.isEmpty, "unrelated lateral ball jump rejected")
         expect(events([-0.6, 0, 0.6], classes: [0, 2, 0]).first?.requiresReview == false, "single target frame recovers brief passage")
-        expect(events([-0.6, 0, 0.6], classes: [0, 0, 0]).first?.requiresReview == true, "ordinary ball passage kept for review")
+        expect(events([-0.6, 0, 0.6], classes: [0, 0, 0]).isEmpty, "ball-only passage does not enter review list")
         expect(events([-0.6, 0, 0.6], times: [0, 0.3, 0.6]).isEmpty, "long gaps cannot connect a trajectory")
         expect(events([-0.6, 0, 0.6], classes: [0, 2, 0], shifts: [0, 0.3, 0.3]).isEmpty, "cut to another rim breaks passage")
         expect(events([-0.6, 0, 0.6], times: [0, 0, 0]).isEmpty, "repeated timestamp is not a trajectory")
-        let pan = events([-0.6, 0, 0.6], shifts: [0, 0.01, 0.02])
+        let pan = events([-0.6, 0, 0.6], classes: [0, 2, 0], shifts: [0, 0.01, 0.02])
         expect(pan.count == 1 && !pan[0].requiresReview, "small camera pan uses rim-relative coordinates")
-        let wide = events([-0.6, 0, 0.6], aspect: 720.0 / 1280)
+        let wide = events([-0.6, 0, 0.6], classes: [0, 2, 0], aspect: 720.0 / 1280)
         expect(wide.count == 1 && !wide[0].requiresReview && near(wide[0].time, descent[0].time), "landscape aspect ratio preserves physical passage")
 
         var continuous = BasketMotionFilter(threshold: 0.55, frameRate: 30)
         var restored = BasketMotionFilter(threshold: 0.55, frameRate: 30)
         let values = [-0.6, 0, 0.6, 0.9]
-        for i in values.indices { continuous.append(time: Double(i) / 30, objects: scene(values[i])) }
+        for i in values.indices { continuous.append(time: Double(i) / 30, objects: scene(values[i], cls: i == 1 ? 2 : 0)) }
         // Resume reconstructs the filter from persisted hits, including before
         // the checkpoint boundary, rather than losing the start of a passage.
-        let hits = values.enumerated().map { (Double($0.offset) / 30, scene($0.element)) }
+        let hits = values.enumerated().map { (Double($0.offset) / 30, scene($0.element, cls: $0.offset == 1 ? 2 : 0)) }
         for hit in hits.prefix(2) { restored.append(time: hit.0, objects: hit.1) }
         for hit in hits.dropFirst(2) { restored.append(time: hit.0, objects: hit.1) }
         let finished = continuous.finish()
@@ -94,14 +94,58 @@ struct BasketMotionTests {
         expect(continuous.finish().count == finished.count, "finish idempotent")
         var noScore = ScoreChangeFilter()
         let weak = noScore.candidates(visualEvents: appearance)
-        expect(weak.count == 1 && weak[0].requiresReview, "absence of scoreboard preserves review status")
+        expect(weak.isEmpty, "absence of scoreboard does not resurrect rejected appearances")
         for t in [0.0, 0.5, 1.0] {
             noScore.append(time: t, reading: .init(left: 0, right: 0, centerX: 0.5, centerY: 0.5, confidence: 0.95))
         }
         for t in [2.0, 2.5, 3.0] {
             noScore.append(time: t, reading: .init(left: 2, right: 0, centerX: 0.5, centerY: 0.5, confidence: 0.95))
         }
-        expect(noScore.candidates(visualEvents: appearance).first?.requiresReview == false, "stable score increase corroborates uncertain visual candidate")
+        expect(noScore.candidates(visualEvents: appearance).first?.isScoreboard == true, "stable score increase still generates scoreboard candidate")
+        expect(events([-0.6, 0, 0.6]).isEmpty, "moving class-2 boxes alone cannot fake a basketball trajectory")
+        expect(events([-0.6, 0, 0.6], classes: [2, 2, 0]).isEmpty, "ordinary ball above rim required")
+        expect(events([-0.6, 0, 0.6], classes: [0, 2, 2]).isEmpty, "ordinary ball below rim required")
+        expect(events([0.6, 0, -0.6], classes: [0, 2, 0]).isEmpty, "real-ball upward bounce rejected")
+        expect(events([-0.6, 0, 0.6], xs: [0.8, 0.8, 0.8], classes: [0, 2, 0]).isEmpty, "off-rim real-ball descent rejected")
+        expect(events([-0.6, 0, 0.6], xs: [-0.8, 0, 0.65], classes: [0, 2, 0]).isEmpty, "cross-ball lateral jump rejected")
+        expect(events([-0.6, 0, 0.6], classes: [0, 2, 0], times: [0, 0.3, 0.6]).isEmpty, "long gap breaks class sequence")
+        var lowTarget = BasketMotionFilter(threshold: 0.95)
+        for i in 0..<3 { lowTarget.append(time: Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], cls: i == 1 ? 2 : 0)) }
+        expect(lowTarget.finish().isEmpty, "target confidence must meet user threshold")
+        var skinny = BasketMotionFilter(threshold: 0.55)
+        for i in 0..<3 {
+            let objects = scene([-0.6, 0, 0.6][i], cls: i == 1 ? 2 : 0).map { item in
+                item.classID == 0 ? box(0, item.midX - 0.001, item.y1, 0.002, item.height) : item
+            }
+            skinny.append(time: Double(i) / 30, objects: objects)
+        }
+        expect(skinny.finish().isEmpty, "tiny elongated specks cannot bracket a goal")
+        var unrelatedTarget = BasketMotionFilter(threshold: 0.55)
+        for i in 0..<3 { unrelatedTarget.append(time: Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], x: i == 1 ? 0.4 : 0, cls: i == 1 ? 2 : 0)) }
+        expect(unrelatedTarget.finish().isEmpty, "target away from interpolated ball path rejected")
+
+        // Reproduce the review-list flood with repeated intermittent appearances.
+        // This is a controlled detection fixture, not a real-video accuracy score.
+        var oldAppearance = ShotEventFilter(threshold: 0.55, frameRate: 30)
+        var strict = BasketMotionFilter(threshold: 0.55, frameRate: 30)
+        for burst in 0..<134 {
+            for sample in 0..<4 {
+                let time = Double(burst) * 3 + Double(sample) / 30
+                let objects = sample < 2 ? scene(0) : []
+                strict.append(time: time, objects: objects)
+                oldAppearance.append(.init(time: time, confidence: sample < 2 ? 0.9 : 0))
+            }
+        }
+        expect(oldAppearance.finish().count == 134, "fixture reproduces 134 appearance events admitted by old fallback")
+        expect(strict.finish().isEmpty, "134 appearance-only bursts produce zero new candidates")
+        for i in 0..<3 { strict.append(time: 500 + Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], cls: i == 1 ? 2 : 0)) }
+        let mixed = strict.finish()
+        expect(mixed.count == 1 && mixed[0].time > 500, "real passage survives after many rejected bursts")
+        var multiple = BasketMotionFilter(threshold: 0.55)
+        for base in [0.0, 2.0] {
+            for i in 0..<3 { multiple.append(time: base + Double(i) / 30, objects: scene([-0.6, 0, 0.6][i], cls: i == 1 ? 2 : 0)) }
+        }
+        expect(multiple.currentEvents.count == 2 && multiple.finish().count == 2, "live and final preserve separate supported baskets")
         print("Passed \(checks) motion and coordinate checks.")
     }
 }

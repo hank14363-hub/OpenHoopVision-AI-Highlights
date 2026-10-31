@@ -3995,29 +3995,6 @@
         }
       }
     },
-    "Visual candidates require a nearby rim and repeated detections. A readable score strip can add candidates after a stable 1–3 point increase. Score changes need timing review and include at least 8 seconds before and 3 seconds after the estimated event. Missing score graphics do not disable visual detection. Thresholds affect visual candidates; score changes are listed for review. Distant or obscured baskets can still be missed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Visual candidates require a nearby rim and repeated detections. A readable score strip can add candidates after a stable 1–3 point increase. Score changes need timing review and include at least 8 seconds before and 3 seconds after the estimated event. Missing score graphics do not disable visual detection. Thresholds affect visual candidates; score changes are listed for review. Distant or obscured baskets can still be missed."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "画面候选需要篮筐附近的位置证据和多帧识别。比分条连续稳定显示单队增加 1—3 分时，可补充候选。“比分变化”片段需要核对时点，至少保留估计事件前 8 秒、后 3 秒。没有比分条时仍使用画面识别。阈值只影响画面候选；比分候选单独列出复核。远景或遮挡仍可能漏选。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "畫面候選需要籃框附近的位置證據和多幀辨識。比分條連續穩定顯示單隊增加 1—3 分時，可補充候選。「比分變化」片段需要核對時點，至少保留估計事件前 8 秒、後 3 秒。沒有比分條時仍使用畫面辨識。閾值只影響畫面候選；比分候選單獨列出複核。遠景或遮擋仍可能漏選。"
-          }
-        }
-      }
-    },
     "Score change · Check timing": {
       "localizations": {
         "en": {
@@ -4058,6 +4035,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "疑似進球 · 需確認"
+          }
+        }
+      }
+    },
+    "Visual candidates require a ball above the rim, an in-basket target at the rim, and a ball below it in a continuous downward path. Appearance-only and ball-only detections are excluded. Stable score changes can still add candidates for timing review. Occluded or distant baskets may be missed; add them manually when needed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visual candidates require a ball above the rim, an in-basket target at the rim, and a ball below it in a continuous downward path. Appearance-only and ball-only detections are excluded. Stable score changes can still add candidates for timing review. Occluded or distant baskets may be missed; add them manually when needed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有连续观察到篮球在筐上、入网目标在筐口、篮球落到筐下，才生成画面候选。仅有疑似入网外观或普通篮球轨迹不会列入。稳定比分变化仍可补充候选，需要核对时点。遮挡或远景可能漏检，可手动添加。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只有連續觀察到籃球在框上、入網目標在框口、籃球落到框下，才產生畫面候選。僅有疑似入網外觀或普通籃球軌跡不會列入。穩定比分變化仍可補充候選，需要核對時點。遮擋或遠景可能漏檢，可手動加入。"
           }
         }
       }

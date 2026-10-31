@@ -98,7 +98,7 @@ enum AnalysisSettings {
 }
 
 enum BasketballModel {
-    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-motion-v3"
+    static let version = "yolo26-basketball-last-1280x736-rect-int8-v2-strict-motion-v4"
     static let resourceName = "BasketballDetector"
     static let inputWidth = 1280
     static let inputHeight = 736

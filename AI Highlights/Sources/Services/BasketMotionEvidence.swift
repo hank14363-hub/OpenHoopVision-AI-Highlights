@@ -63,7 +63,9 @@ enum BasketImageGeometry {
 
 /// A class-2 label near a rim is only appearance evidence. Corroborate it with
 /// an ordered above -> rim -> below passage, measured relative to a stable rim.
-/// Without this evidence keep the candidate for review, but do not auto-select.
+/// Appearance-only and ball-only detections do not enter the candidate list.
+/// Require ordinary ball observations before AND after a target at the rim;
+/// moving class-2 boxes alone can be background jitter rather than a ball.
 struct BasketMotionFilter {
     private struct Point {
         let time: Double
@@ -81,9 +83,7 @@ struct BasketMotionFilter {
     private struct Passage {
         let time: Double
         let confidence: Double
-        let hasTarget: Bool
     }
-    private var temporal: ShotEventFilter
     private var tracks: [Track] = []
     private var passages: [Passage] = []
     private var lastTime: Double?
@@ -93,7 +93,6 @@ struct BasketMotionFilter {
     init(threshold: Double, frameRate: Double? = nil, imageAspectRatio: Double = 1) {
         self.threshold = threshold.isFinite ? min(0.95, max(0.05, threshold)) : 0.55
         self.imageAspectRatio = imageAspectRatio.isFinite && imageAspectRatio > 0 ? imageAspectRatio : 1
-        temporal = ShotEventFilter(threshold: threshold, frameRate: frameRate)
     }
 
     mutating func append(time: Double, objects: [BasketballObject]) {
@@ -108,7 +107,6 @@ struct BasketMotionFilter {
                              x1: $0.x1, y1: $0.y1 * imageAspectRatio,
                              x2: $0.x2, y2: $0.y2 * imageAspectRatio)
         }
-        temporal.append(.init(time: time, confidence: BasketSpatialGate.confidence(in: objects)))
         let rims = objects.filter { $0.classID == 1 && $0.confidence >= 0.20 && $0.width >= 0.002 }
         var nextTracks: [Track] = []
         var usedTracks: Set<Int> = []
@@ -133,17 +131,25 @@ struct BasketMotionFilter {
             track.lastTime = time
             track.points.removeAll { time - $0.time > 0.60 }
             let balls = objects.filter {
-                ($0.classID == 0 || $0.classID == 2) && $0.confidence >= max(0.18, threshold - 0.20) &&
-                $0.width <= rim.width * 1.35 && $0.height <= rim.width * 1.8
+                guard ($0.classID == 0 || $0.classID == 2),
+                      $0.confidence >= max(0.35, threshold - 0.20),
+                      $0.width <= rim.width * 1.35, $0.height <= rim.width * 1.8 else { return false }
+                if $0.classID == 0 {
+                    // Reject tiny specks and large/elongated person/background
+                    // boxes as the ordinary ball that brackets the target.
+                    return $0.width >= rim.width * 0.10 && $0.width <= rim.width * 0.85 &&
+                        (0.5...2).contains($0.height / $0.width)
+                }
+                return true
             }
             for ball in balls {
                 let point = Point(time: time, x: (ball.midX - rim.midX) / rim.width,
                                   y: (ball.midY - rim.midY) / rim.width,
                                   confidence: ball.confidence, classID: ball.classID, width: ball.width / rim.width)
                 guard abs(point.x) <= 1.3, point.y >= -2.5, point.y <= 2 else { continue }
-                if point.y >= 0.25, abs(point.x) <= 0.65,
+                if point.classID == 0, point.y >= 0.25, abs(point.x) <= 0.65,
                    let passage = passage(endingAt: point, points: track.points) {
-                    if passages.allSatisfy({ abs($0.time - passage.time) >= 1.5 }) { passages.append(passage) }
+                    passages.append(passage)
                 }
                 track.points.append(point)
             }
@@ -154,51 +160,42 @@ struct BasketMotionFilter {
 
     private func passage(endingAt end: Point, points: [Point]) -> Passage? {
         for middle in points.reversed() where middle.time < end.time && end.time - middle.time <= 0.18 {
-            guard abs(middle.x) <= 0.55, abs(middle.y) <= 0.55,
+            guard middle.classID == 2, middle.confidence >= threshold,
+                  abs(middle.x) <= 0.45, abs(middle.y) <= 0.4,
                   end.y - middle.y >= 0.08, end.y - middle.y <= 1.6,
                   abs(end.x - middle.x) <= 0.65,
                   (0.5...2).contains(end.width / middle.width) else { continue }
             for start in points.reversed() where start.time < middle.time && middle.time - start.time <= 0.18 {
-                guard start.y <= -0.25, middle.y - start.y >= 0.08, middle.y - start.y <= 1.6,
+                guard start.classID == 0, start.y <= -0.25,
+                      middle.y - start.y >= 0.08, middle.y - start.y <= 1.6,
                       abs(start.x) <= 0.8, abs(middle.x - start.x) <= 0.65,
                       (0.5...2).contains(middle.width / start.width),
                       end.time - start.time >= 0.04, end.time - start.time <= 0.45 else { continue }
-                let evidence = [start, middle, end]
                 // Crossing the plane from outside the hoop is a miss, even if
                 // the ball later falls below it. Require alignment at the plane.
                 let fraction = -start.y / (end.y - start.y)
                 let crossingX = start.x + (end.x - start.x) * fraction
                 guard abs(crossingX) <= 0.5 else { continue }
-                let targetScores = evidence.filter { $0.classID == 2 }.map(\.confidence)
-                return Passage(time: middle.time, confidence: targetScores.max() ?? evidence.map(\.confidence).min() ?? 0,
-                               hasTarget: !targetScores.isEmpty)
+                // A nearby class-2 label must lie on this ball's path, rather
+                // than lending its score to an unrelated passing ball.
+                let timeFraction = (middle.time - start.time) / (end.time - start.time)
+                let predictedX = start.x + (end.x - start.x) * timeFraction
+                let predictedY = start.y + (end.y - start.y) * timeFraction
+                guard hypot(middle.x - predictedX, middle.y - predictedY) <= 0.35 else { continue }
+                return Passage(time: middle.time, confidence: middle.confidence)
             }
         }
         return nil
     }
 
-    var currentEvents: [ShotEventFilter.Event] { resolved(temporal.currentEvents) }
-    mutating func finish() -> [ShotEventFilter.Event] {
-        let events = temporal.finish()
-        return resolved(events)
-    }
+    var currentEvents: [ShotEventFilter.Event] { resolved() }
+    mutating func finish() -> [ShotEventFilter.Event] { resolved() }
 
-    private func resolved(_ visualEvents: [ShotEventFilter.Event]) -> [ShotEventFilter.Event] {
-        var events: [ShotEventFilter.Event] = []
-        for event in visualEvents {
-            let passage = passages.filter { abs($0.time - event.time) <= 0.65 }
-                .min { abs($0.time - event.time) < abs($1.time - event.time) }
-            events.append(.init(time: passage?.time ?? event.time, confidence: event.confidence,
-                                supportingFrames: event.supportingFrames, requiresReview: passage == nil))
+    private func resolved() -> [ShotEventFilter.Event] {
+        let events = passages.map {
+            ShotEventFilter.Event(time: $0.time, confidence: $0.confidence, supportingFrames: 3)
         }
-        for passage in passages where !events.contains(where: { abs($0.time - passage.time) < 1.5 }) {
-            // A brief passage can have just one class-2 frame. Keep it for review
-            // even when it cannot satisfy the two-target-frame appearance rule.
-            events.append(.init(time: passage.time, confidence: passage.confidence, supportingFrames: 3,
-                                requiresReview: !passage.hasTarget || passage.confidence < threshold))
-        }
-        // Re-anchoring at a passage can move two previously separate appearance
-        // peaks together. Prefer corroborated events and suppress duplicates again.
+        // Select the strongest evidence for nearby duplicate passages.
         let ranked = events.sorted {
             if $0.requiresReview != $1.requiresReview { return !$0.requiresReview }
             if $0.confidence != $1.confidence { return $0.confidence > $1.confidence }
