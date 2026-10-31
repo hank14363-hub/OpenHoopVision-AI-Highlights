@@ -1,0 +1,41 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Select Latest Xcode
+        run: |
+          echo "=== 当前系统中安装的 Xcode 版本 ==="
+          ls -d /Applications/Xcode*.app
+          LATEST_XCODE=$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)
+          echo "=== 切换至最高版本: $LATEST_XCODE ==="
+          sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Build Xcode Project
+        run: |
+          set -o pipefail
+          xcodebuild -project "AI Highlights.xcodeproj" \
+            -scheme "AI Highlights" \
+            -configuration Debug \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            DEVELOPMENT_TEAM="" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            OTHER_SWIFT_FLAGS='$(inherited) -Xfrontend -solver-expression-time-threshold=600' \
+            clean build 2>&1 | tee build.log || {
+              echo "================ 核心错误原因汇总 ================"
+              grep -E "error:" build.log || tail -n 40 build.log
+              exit
