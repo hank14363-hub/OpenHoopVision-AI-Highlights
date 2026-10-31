@@ -52,12 +52,20 @@ final class ScoreboardDetector {
               let enlarged = enlarged(board, scale: 4) else { return nil }
         do { try VNImageRequestHandler(cgImage: enlarged, orientation: .up).perform([enhancedRequest]) }
         catch { return nil }
-        let enhanced = tokens(from: enhancedRequest.results).map { token in
-            ScoreboardParser.Token(text: token.text, confidence: token.confidence,
-                x: (Double(cropRect.minX) + token.x * Double(cropRect.width)) / Double(band.width),
-                y: (Double(cropRect.minY) + token.y * Double(cropRect.height)) / Double(band.height),
-                width: token.width * Double(cropRect.width) / Double(band.width),
-                height: token.height * Double(cropRect.height) / Double(band.height))
+        let enhancedSource = tokens(from: enhancedRequest.results)
+        let bandWidth = Double(band.width)
+        let bandHeight = Double(band.height)
+        let cropMinX = Double(cropRect.minX)
+        let cropMinY = Double(cropRect.minY)
+        let cropWidth = Double(cropRect.width)
+        let cropHeight = Double(cropRect.height)
+        let enhanced = enhancedSource.map { token -> ScoreboardParser.Token in
+            let x = (cropMinX + token.x * cropWidth) / bandWidth
+            let y = (cropMinY + token.y * cropHeight) / bandHeight
+            let width = token.width * cropWidth / bandWidth
+            let height = token.height * cropHeight / bandHeight
+            return ScoreboardParser.Token(text: token.text, confidence: token.confidence,
+                                          x: x, y: y, width: width, height: height)
         }
         return ScoreboardParser.reading(from: enhanced)
     }
