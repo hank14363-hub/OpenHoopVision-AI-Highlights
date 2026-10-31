@@ -40,7 +40,7 @@ struct SettingsView: View {
                 ), unit: String(localized: "s", bundle: AppLanguage.current.bundle), range: 0...30, fractionDigits: 1, accessibilityID: "settings.clipLeadOut")
                 rowDivider
                 DisclosureGroup {
-                    Text(String(localized: "No candidates means analysis finished but no frames met the detection threshold. Lower the detection threshold and filter again, or choose a video with a clearer view of the basket. Candidates below the review threshold are marked “Uncertain”.", bundle: AppLanguage.current.bundle))
+                    Text(String(localized: "Candidates require repeated detections across nearby frames. Isolated spikes and persistent detections are ignored, and nearby duplicates are merged. Short or obscured baskets can be missed. Lower the detection threshold and analyze again if needed. Candidates below the review threshold are marked as uncertain.", bundle: AppLanguage.current.bundle))
                         .font(.system(size: 12)).foregroundStyle(Color.hoopMuted).padding(.bottom, 14)
                 } label: {
                     HStack(spacing: 10) {

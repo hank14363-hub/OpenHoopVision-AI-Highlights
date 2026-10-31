@@ -1520,19 +1520,19 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Goals detected: %lld"
+            "value" : "Shot candidates: %lld"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已检测到 %lld 进球"
+            "value" : "候选片段：%lld"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "已偵測到 %lld 進球"
+            "value" : "候選片段：%lld"
           }
         }
       }
@@ -2158,25 +2158,25 @@
         }
       }
     },
-    "No candidates means analysis finished but no frames met the detection threshold. Lower the detection threshold and filter again, or choose a video with a clearer view of the basket. Candidates below the review threshold are marked “Uncertain”." : {
+    "Candidates require repeated detections across nearby frames. Isolated spikes and persistent detections are ignored, and nearby duplicates are merged. Short or obscured baskets can be missed. Lower the detection threshold and analyze again if needed. Candidates below the review threshold are marked as uncertain." : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "No candidates means analysis finished but no frames met the detection threshold. Lower the detection threshold and filter again, or choose a video with a clearer view of the basket. Candidates below the review threshold are marked “Uncertain”."
+            "value" : "Candidates require repeated detections across nearby frames. Isolated spikes and persistent detections are ignored, and nearby duplicates are merged. Short or obscured baskets can be missed. Lower the detection threshold and analyze again if needed. Candidates below the review threshold are marked as uncertain."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "没有候选表示分析已完成，但没有画面达到识别阈值。可降低识别阈值重新筛选，或换一段篮筐更清晰的视频。低于复核阈值的候选会标为“待复核”。"
+            "value" : "候选片段需要在相邻多帧中重复检测到目标。孤立尖峰和持续异常检测会被排除，时间接近的重复候选会合并。短暂或被遮挡的进球可能漏检，必要时可降低识别阈值重新分析。低于复核阈值的候选会标为“待复核”。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "沒有候選表示分析已完成，但沒有畫面達到辨識閾值。可降低辨識閾值重新篩選，或換一段籃框更清晰的影片。低於複核閾值的候選會標為「待確認」。"
+            "value" : "候選片段需要在相鄰多幀中重複偵測到目標。孤立尖峰和持續異常偵測會被排除，時間接近的重複候選會合併。短暫或被遮擋的進球可能漏判，必要時可降低辨識閾值重新分析。低於複核閾值的候選會標為「待確認」。"
           }
         }
       }

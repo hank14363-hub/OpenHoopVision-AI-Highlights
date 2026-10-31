@@ -30,6 +30,17 @@ jobs:
           test -n "$REVIEW_VIEWS"
           printf '%s\n' "$REVIEW_VIEWS"
 
+      - name: Test shot event filtering
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEST_BINARY="$RUNNER_TEMP/shot-event-filter-tests"
+          xcrun swiftc -swift-version 5 -parse-as-library \
+            "AI Highlights/Sources/Services/ShotEventFilter.swift" \
+            "Tests/ShotEventFilterTests.swift" \
+            -o "$TEST_BINARY"
+          "$TEST_BINARY"
+
       - name: Build Xcode project
         shell: bash
         run: |
@@ -53,24 +64,24 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          if grep -n -E 'error:|fatal error:' build.log; then
-            exit 1
+          if [ -f build.log ]; then
+            grep -n -C 4 -E 'error:|fatal error:' build.log || tail -n 200 build.log
+          else
+            echo "The build did not start; inspect the earlier failed step."
           fi
-          tail -n 200 build.log
-          exit 1
 
       - name: Verify and package IPA
         shell: bash
         run: |
           set -euo pipefail
-          APP_PATH="$(find build/Build/Products -type d -name '*.app' -print | head -n 1)"
-          test -n "$APP_PATH"
+          APP_PATH="build/Build/Products/Debug-iphoneos/AI Highlights.app"
           test -f "$APP_PATH/Info.plist"
           rm -rf Payload AI_Highlights_Unsigned.ipa
           mkdir Payload
           cp -R "$APP_PATH" Payload/
           ditto -c -k --sequesterRsrc --keepParent Payload AI_Highlights_Unsigned.ipa
-          unzip -l AI_Highlights_Unsigned.ipa | head -n 20
+          unzip -t AI_Highlights_Unsigned.ipa
+          unzip -l AI_Highlights_Unsigned.ipa | sed -n '1,20p'
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4

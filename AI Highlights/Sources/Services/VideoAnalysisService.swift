@@ -8,7 +8,6 @@ typealias AnalysisProgressHandler = @MainActor @Sendable (
 typealias AnalysisCheckpointHandler = @MainActor @Sendable (AnalysisCheckpointBatch) async -> Bool
 
 actor VideoAnalysisService {
-    private let hitMergeGap: TimeInterval = 0.9
     private var cachedScan: CompletedScan?
 
     func analyze(videoURL: URL, confidenceThreshold: Double = AnalysisSettings.defaultThreshold, execution: AnalysisExecutionPolicy? = nil, reuseCachedScan: Bool = true, resumeHits: [AnalysisHit] = [], checkpoint: @escaping AnalysisCheckpointHandler = { _ in true }, progress: @escaping AnalysisProgressHandler) async throws -> VideoAnalysisResult {
@@ -48,8 +47,9 @@ actor VideoAnalysisService {
         let sourceFrameRate = nominalFrameRate.isFinite && nominalFrameRate > 0 ? Double(nominalFrameRate) : nil
         let metadata = VideoMetadata.from(naturalSize: naturalSize, preferredTransform: transform,
                                           frameRate: sourceFrameRate)
-        var scores = resumeHits.filter { $0.time.isFinite && $0.confidence.isFinite && $0.time >= 0 && $0.time <= duration }
-            .sorted { $0.time < $1.time }
+        var scores = resumeHits.filter {
+            $0.time.isFinite && $0.confidence.isFinite && $0.time >= 0 && $0.time <= duration && (0...1).contains($0.confidence)
+        }.sorted { $0.time == $1.time ? $0.confidence > $1.confidence : $0.time < $1.time }
         let resumeAfterTime = scores.last?.time
         if scores.isEmpty {
             await progress(0.03, String(localized: "Loading the basketball Core ML model", bundle: AppLanguage.current.bundle), nil)
@@ -77,12 +77,11 @@ actor VideoAnalysisService {
         var processedFrames = scores.count
         var backgroundFrames = 0
         var highestConfidence = scores.map(\.confidence).max() ?? 0
-        var detectedGoals = 0
-        var lastHitTime: TimeInterval?
-        for hit in scores where hit.confidence >= threshold {
-            if lastHitTime.map({ hit.time - $0 > hitMergeGap }) ?? true { detectedGoals += 1 }
-            lastHitTime = hit.time
+        var eventFilter = ShotEventFilter(threshold: threshold, frameRate: sourceFrameRate)
+        for hit in scores {
+            eventFilter.append(ShotEventFilter.Sample(time: hit.time, confidence: hit.confidence))
         }
+        var detectedGoals = eventFilter.candidateCount
         let processingStart = ProcessInfo.processInfo.systemUptime
         var lastProgressUpdate = processingStart
         var lastCheckpointTime = processingStart
@@ -112,6 +111,7 @@ actor VideoAnalysisService {
 
         func flushCheckpoint() async {
             guard !pendingCheckpointHits.isEmpty, let lastHit = pendingCheckpointHits.last else { return }
+            detectedGoals = eventFilter.candidateCount
             let processedVideoTime = min(duration, max(0, lastHit.time))
             let videoFraction = min(1, max(0, processedVideoTime / duration))
             let performance = AnalysisPerformance(processedFrames: processedFrames,
@@ -158,16 +158,14 @@ actor VideoAnalysisService {
                 let hit = AnalysisHit(time: timestamp, confidence: confidence)
                 scores.append(hit)
                 pendingCheckpointHits.append(hit)
-                if confidence >= threshold {
-                    if lastHitTime.map({ timestamp - $0 > hitMergeGap }) ?? true { detectedGoals += 1 }
-                    lastHitTime = timestamp
-                }
+                eventFilter.append(ShotEventFilter.Sample(time: timestamp, confidence: confidence))
                 let now = ProcessInfo.processInfo.systemUptime
                 let frameDuration = frame.duration
                 let frameEnd = timestamp + (frameDuration.isFinite && frameDuration > 0 ? frameDuration : 0)
                 let videoFraction = min(1, max(0, frameEnd / duration))
                 if processedFrames == 1 || now - lastProgressUpdate >= 0.5 {
                     lastProgressUpdate = now
+                    detectedGoals = eventFilter.candidateCount
                     let performance = AnalysisPerformance(
                         processedFrames: processedFrames,
                         elapsedSeconds: now - processingStart,
@@ -195,6 +193,7 @@ actor VideoAnalysisService {
         try Task.checkCancellation()
         guard processedFrames > 0 else { throw VideoAnalysisError.unreadableVideo }
 
+        detectedGoals = eventFilter.finish().count
         let finishedAt = ProcessInfo.processInfo.systemUptime
         let rollingFPS = recentFPS(at: finishedAt, processedFrames: processedFrames)
         let performance = AnalysisPerformance(
@@ -203,7 +202,7 @@ actor VideoAnalysisService {
             videoFraction: 1, totalFrames: processedFrames, detectedGoals: detectedGoals, backgroundFrames: backgroundFrames,
             processedVideoTime: duration, totalVideoDuration: duration, recentFramesPerSecond: rollingFPS
         )
-        let scan = CompletedScan(identity: identity, duration: duration,
+        let scan = CompletedScan(identity: identity, duration: duration, frameRate: sourceFrameRate,
             scores: scores, highestConfidence: highestConfidence, performance: performance, metadata: metadata)
         cachedScan = scan
         let result = makeResult(scan: scan, threshold: threshold)
@@ -214,29 +213,18 @@ actor VideoAnalysisService {
     private func makeResult(scan: CompletedScan, threshold: Double) -> VideoAnalysisResult {
         VideoAnalysisResult(
             duration: scan.duration,
-            candidates: mergeHits(scan.scores.filter { $0.confidence >= threshold }, duration: scan.duration),
+            candidates: ShotEventFilter.events(
+                in: scan.scores.map { ShotEventFilter.Sample(time: $0.time, confidence: $0.confidence) },
+                threshold: threshold,
+                frameRate: scan.frameRate
+            ).map { event in
+                ShotCandidate(eventTime: min(max(0, event.time), scan.duration), confidence: event.confidence)
+            },
             processedFrames: scan.scores.count, highestConfidence: scan.highestConfidence,
             confidenceThreshold: threshold, metadata: scan.metadata
         )
     }
 
-    private func mergeHits(_ hits: [AnalysisHit], duration: TimeInterval) -> [ShotCandidate] {
-        let ordered = hits.sorted { $0.time < $1.time }
-        guard !ordered.isEmpty else { return [] }
-        var groups: [[AnalysisHit]] = []
-        for hit in ordered {
-            if let lastGroup = groups.last, let last = lastGroup.last, hit.time - last.time <= hitMergeGap {
-                groups[groups.count - 1].append(hit)
-            } else {
-                groups.append([hit])
-            }
-        }
-        return groups.compactMap { group in
-            guard let best = group.max(by: { $0.confidence < $1.confidence }) else { return nil }
-            let time = min(max(0, best.time), duration)
-            return ShotCandidate(eventTime: time, confidence: best.confidence)
-        }
-    }
 }
 
 private struct VideoIdentity: Equatable {
@@ -264,6 +252,7 @@ private struct VideoIdentity: Equatable {
 private struct CompletedScan {
     let identity: VideoIdentity
     let duration: TimeInterval
+    let frameRate: Double?
     let scores: [AnalysisHit]
     let highestConfidence: Double
     let performance: AnalysisPerformance

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B20000000000000000000001 /* Sources/Services/ShotEventFilter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000002 /* Sources/Services/ShotEventFilter.swift */; };
 		000000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000007 /* Assets.xcassets */; };
 		000000000000000000000065 /* Sources/AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000064 /* Sources/AppModel.swift */; };
 		000000000000000000000067 /* Sources/Intents/HighlightIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 000000000000000000000066 /* Sources/Intents/HighlightIntents.swift */; };
@@ -41,6 +42,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		B20000000000000000000002 /* Sources/Services/ShotEventFilter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/Services/ShotEventFilter.swift; sourceTree = "<group>"; };
 		000000000000000000000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		000000000000000000000009 /* AI Highlights.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "AI Highlights.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		000000000000000000000064 /* Sources/AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Sources/AppModel.swift; sourceTree = "<group>"; };
@@ -111,6 +113,7 @@
 		000000000000000000000005 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				B20000000000000000000002 /* Sources/Services/ShotEventFilter.swift */,
 				0000000000000000000000A6 /* Sources/Models/AppLanguage.swift */,
 				0000000000000000000000A8 /* Sources/Services/PhotoLibraryVideoService.swift */,
 				00000000000000000000009C /* Sources/Services/PlaybackAudioSession.swift */,
@@ -224,6 +227,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B20000000000000000000001 /* Sources/Services/ShotEventFilter.swift in Sources */,
 				0000000000000000000000A7 /* Sources/Models/AppLanguage.swift in Sources */,
 				00000000000000000000009D /* Sources/Services/PlaybackAudioSession.swift in Sources */,
 				000000000000000000000099 /* Sources/Services/VideoThumbnailStore.swift in Sources */,
